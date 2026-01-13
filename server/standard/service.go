@@ -193,3 +193,40 @@ func (s *Service) GetTLSConfig(ctx context.Context) (*tls.Config, error) {
 		MinVersion:     tls.VersionTLS13,
 	}, nil
 }
+
+func (s *Service) GetClientTLSConfig(ctx context.Context) (*tls.Config, error) {
+	currentCert := s.currentCert.Load()
+	if currentCert == nil {
+		return nil, errors.New("no certificate loaded")
+	}
+
+	cert, err := x509.ParseCertificate(currentCert.Certificate[0])
+	if err != nil || cert == nil {
+		log.Warn().Err(err).Msg("Failed to parse certificate")
+		return nil, errors.New("could not parse certificate")
+	}
+
+	// Auto-reload if expired.
+	expiry := cert.NotAfter
+	if expiry.Before(time.Now()) {
+		log.Warn().
+			Str("issued_to", cert.Subject.CommonName).
+			Str("issued_by", cert.Issuer.CommonName).
+			Time("expiry", expiry).
+			Msg("Server certificate expired, reloading for client connection...")
+		// Reload the certificate.
+		s.TryReloadCertificate(ctx)
+
+		// Re-fetch the certificate after reload attempt.
+		currentCert = s.currentCert.Load()
+		if currentCert == nil {
+			return nil, errors.New("no certificate loaded after reload attempt")
+		}
+	}
+
+	// Return a TLS config with static certificates for client use.
+	return &tls.Config{
+		Certificates: []tls.Certificate{*currentCert},
+		MinVersion:   tls.VersionTLS13,
+	}, nil
+}

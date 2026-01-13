@@ -34,4 +34,16 @@ type Service interface {
 	// GetTLSConfig returns a TLS configuration for server use.
 	// The returned config includes GetCertificate callback and minimum TLS version.
 	GetTLSConfig(ctx context.Context) (*tls.Config, error)
+
+	// GetClientTLSConfig returns a TLS configuration suitable for client connections.
+	// Unlike GetTLSConfig(), this returns a config with static certificates suitable
+	// for use in gRPC client credentials. The certificate is fetched at call time,
+	// so connection pools that call this method when creating new connections will
+	// automatically pick up reloaded certificates.
+	//
+	// This is useful when the same certificate is used for both server and client
+	// roles (e.g., in peer-to-peer communication). When certificates are reloaded
+	// via TryReloadCertificate(), subsequent calls to GetClientTLSConfig() will
+	// return the new certificate.
+	GetClientTLSConfig(ctx context.Context) (*tls.Config, error)
 }
