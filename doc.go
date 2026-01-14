@@ -41,6 +41,18 @@
 //	// Trigger reload (e.g., on SIGHUP)
 //	certMgr.TryReloadCertificate(ctx)
 //
+// For peer-to-peer scenarios where the same certificate is used for both
+// server and client roles, use GetClientTLSConfig() to get a static
+// certificate config suitable for client connections:
+//
+//	// Use the same cert manager for client connections
+//	clientTLSConfig, _ := certMgr.GetClientTLSConfig(ctx)
+//	conn, _ := grpc.NewClient("peer:port",
+//	    grpc.WithTransportCredentials(credentials.NewTLS(clientTLSConfig)))
+//
+// This is particularly useful for connection pooling, as new connections
+// automatically pick up reloaded certificates.
+//
 // Client Certificate Management:
 //
 // The client package provides certificate loading for client connections.
