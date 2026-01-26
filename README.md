@@ -1,1 +1,139 @@
 # go-certmanager
+
+[![Tag](https://img.shields.io/github/tag/attestantio/go-certmanager.svg)](https://github.com/attestantio/go-certmanager/releases/)
+[![License](https://img.shields.io/github/license/attestantio/go-certmanager.svg)](LICENSE)
+[![GoDoc](https://godoc.org/github.com/attestantio/go-certmanager?status.svg)](https://godoc.org/github.com/attestantio/go-certmanager)
+![Lint](https://github.com/attestantio/go-certmanager/workflows/golangci-lint/badge.svg)
+[![Go Report Card](https://goreportcard.com/badge/github.com/attestantio/go-certmanager)](https://goreportcard.com/report/github.com/attestantio/go-certmanager)
+
+Go library providing certificate management capabilities for both server and client TLS configurations.
+
+The library supports:
+  - Server certificate loading with automatic reload on expiry or SIGHUP signal
+  - Client certificate loading for gRPC and TLS connections
+  - Subject Alternative Name (SAN) extraction following RFC 6125
+  - Flexible certificate fetching via pluggable Fetcher interface
+  - Thread-safe operations for concurrent access
+
+This library is used by Attestant projects such as [Vouch](https://github.com/attestantio/vouch) (Ethereum validator client) and [Dirk](https://github.com/attestantio/dirk) (distributed remote keymanager) for certificate management in Ethereum staking infrastructure.
+
+## Table of Contents
+
+- [go-certmanager](#go-certmanager)
+  - [Table of Contents](#table-of-contents)
+  - [Install](#install)
+  - [Usage](#usage)
+    - [Server Certificate Management](#server-certificate-management)
+    - [Client Certificate Management](#client-certificate-management)
+    - [Certificate Fetching](#certificate-fetching)
+    - [SAN Extraction](#san-extraction)
+  - [Maintainers](#maintainers)
+  - [Contributing](#contributing)
+  - [License](#license)
+
+## Install
+
+`go-certmanager` is a standard Go module which can be installed with:
+
+```sh
+go get github.com/attestantio/go-certmanager
+```
+
+## Usage
+
+### Server Certificate Management
+
+The server package provides certificate management for TLS servers with automatic reloading capabilities. Use this for long-running services that need to reload certificates without restarting.
+
+```go
+import servercert "github.com/attestantio/go-certmanager/server/standard"
+
+certMgr, err := servercert.New(ctx,
+    servercert.WithFetcher(fetcher),
+    servercert.WithCertPEMURI("file:///path/to/server.crt"),
+    servercert.WithCertKeyURI("file:///path/to/server.key"),
+)
+if err != nil {
+    return err
+}
+
+// Use in TLS server config
+tlsConfig, err := certMgr.GetTLSConfig(ctx)
+
+// Trigger reload (e.g., on SIGHUP)
+certMgr.TryReloadCertificate(ctx)
+```
+
+For peer-to-peer scenarios where the same certificate is used for both server and client roles, use `GetClientTLSConfig()` to get a static certificate config suitable for client connections:
+
+```go
+// Use the same cert manager for client connections
+clientTLSConfig, err := certMgr.GetClientTLSConfig(ctx)
+conn, err := grpc.NewClient("peer:port",
+    grpc.WithTransportCredentials(credentials.NewTLS(clientTLSConfig)))
+```
+
+This is particularly useful for connection pooling, as new connections automatically pick up reloaded certificates.
+
+### Client Certificate Management
+
+The client package provides certificate loading for client connections.
+
+```go
+import clientcert "github.com/attestantio/go-certmanager/client/standard"
+
+certMgr, err := clientcert.New(ctx,
+    clientcert.WithFetcher(fetcher),
+    clientcert.WithCertPEMURI("file:///path/to/client.crt"),
+    clientcert.WithCertKeyURI("file:///path/to/client.key"),
+    clientcert.WithCACertURI("file:///path/to/ca.crt"), // Optional
+)
+if err != nil {
+    return err
+}
+
+// Get TLS config for client connections
+tlsConfig, err := certMgr.GetTLSConfig(ctx)
+```
+
+### Certificate Fetching
+
+The fetcher package provides an abstraction for certificate sources. Use the majordomo implementation for flexible fetching from files, HTTP endpoints, or secret vaults.
+
+```go
+import majordomofetcher "github.com/attestantio/go-certmanager/fetcher/majordomo"
+
+fetcher, err := majordomofetcher.New(ctx,
+    majordomofetcher.WithMajordomo(majordomoSvc),
+)
+```
+
+### SAN Extraction
+
+The san package provides RFC 6125-compliant certificate identity extraction. It follows the standard priority order: DNS names > IP addresses > Email addresses > Common Name.
+
+```go
+import "github.com/attestantio/go-certmanager/san"
+
+// Extract primary identity from certificate
+identity, source := san.ExtractIdentity(cert)
+// source indicates: IdentitySourceSANDNS, IdentitySourceSANIP,
+// IdentitySourceSANEmail, IdentitySourceCN, or IdentitySourceUnknown
+
+// Extract all Subject Alternative Names
+allSANs := san.ExtractAllSANs(cert)
+// Access: allSANs.DNSNames, allSANs.IPAddresses, allSANs.EmailAddresses
+```
+
+## Maintainers
+
+[@AntiD2ta](https://github.com/AntiD2ta)
+[@Bez625](https://github.com/Bez625)
+
+## Contributing
+
+Contributions are welcome. Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+## License
+
+[Apache-2.0](LICENSE) - see [LICENSE](LICENSE) for the full text.
