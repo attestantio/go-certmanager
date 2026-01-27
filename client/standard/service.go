@@ -27,6 +27,7 @@ import (
 
 // Service is the standard client certificate manager implementation.
 type Service struct {
+	log        zerolog.Logger
 	fetcher    fetcher.Fetcher
 	certPEMURI string
 	certKeyURI string
@@ -35,8 +36,6 @@ type Service struct {
 
 var _ client.Service = (*Service)(nil)
 
-var log zerolog.Logger
-
 // New creates a new client certificate manager.
 func New(ctx context.Context, params ...Parameter) (*Service, error) {
 	parameters, err := parseAndCheckParameters(params...)
@@ -44,12 +43,13 @@ func New(ctx context.Context, params ...Parameter) (*Service, error) {
 		return nil, errors.Wrap(err, "problem with parameters")
 	}
 
-	log = zerologger.With().Str("service", "certmanager").Str("impl", "client").Str("type", "standard").Logger()
+	log := zerologger.With().Str("service", "certmanager").Str("impl", "client").Str("type", "standard").Logger()
 	if parameters.logLevel != log.GetLevel() {
 		log = log.Level(parameters.logLevel)
 	}
 
 	return &Service{
+		log:        log,
 		fetcher:    parameters.fetcher,
 		certPEMURI: parameters.certPEMURI,
 		certKeyURI: parameters.certKeyURI,

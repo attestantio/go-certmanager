@@ -29,6 +29,7 @@ import (
 
 // Service is the standard server certificate manager implementation.
 type Service struct {
+	log           zerolog.Logger
 	fetcher       fetcher.Fetcher
 	reloadTimeout time.Duration
 	certPEMURI    string
@@ -39,9 +40,6 @@ type Service struct {
 	currentCert           atomic.Pointer[tls.Certificate]
 }
 
-// module-wide log.
-var log zerolog.Logger
-
 // New creates a new server certificate manager.
 func New(ctx context.Context, params ...Parameter) (*Service, error) {
 	parameters, err := parseAndCheckParameters(params...)
@@ -50,7 +48,7 @@ func New(ctx context.Context, params ...Parameter) (*Service, error) {
 	}
 
 	// Set logging.
-	log = zerologger.With().Str("service", "certmanager").Str("impl", "server").Str("type", "standard").Logger()
+	log := zerologger.With().Str("service", "certmanager").Str("impl", "server").Str("type", "standard").Logger()
 	if parameters.logLevel != log.GetLevel() {
 		log = log.Level(parameters.logLevel)
 	}
@@ -88,6 +86,7 @@ func New(ctx context.Context, params ...Parameter) (*Service, error) {
 		Msg("Server certificate loaded")
 
 	s := &Service{
+		log:           log,
 		fetcher:       parameters.fetcher,
 		certPEMURI:    parameters.certPEMURI,
 		certKeyURI:    parameters.certKeyURI,
@@ -115,34 +114,34 @@ func (s *Service) TryReloadCertificate(ctx context.Context) {
 
 	certPEMBlock, err := s.fetcher.Fetch(ctx, s.certPEMURI)
 	if err != nil {
-		log.Warn().Err(err).Msg("Failed to obtain server certificate during reload")
+		s.log.Warn().Err(err).Msg("Failed to obtain server certificate during reload")
 		return
 	}
 	certKeyBlock, err := s.fetcher.Fetch(ctx, s.certKeyURI)
 	if err != nil {
-		log.Warn().Err(err).Msg("Failed to obtain server key during reload")
+		s.log.Warn().Err(err).Msg("Failed to obtain server key during reload")
 		return
 	}
 
 	// Load the certificate pair.
 	serverCert, err := tls.X509KeyPair(certPEMBlock, certKeyBlock)
 	if err != nil {
-		log.Warn().Err(err).Msg("Failed to load certificate pair during reload")
+		s.log.Warn().Err(err).Msg("Failed to load certificate pair during reload")
 		return
 	}
 	if len(serverCert.Certificate) == 0 {
-		log.Warn().Msg("Certificate file does not contain a certificate")
+		s.log.Warn().Msg("Certificate file does not contain a certificate")
 		return
 	}
 	cert, err := x509.ParseCertificate(serverCert.Certificate[0])
 	if err != nil || cert == nil {
-		log.Warn().Msg("Failed to parse certificate")
+		s.log.Warn().Msg("Failed to parse certificate")
 		return
 	}
 
 	newExpiry := cert.NotAfter
 	if newExpiry.Before(time.Now()) {
-		log.Warn().
+		s.log.Warn().
 			Str("issued_to", cert.Subject.CommonName).
 			Str("issued_by", cert.Issuer.CommonName).
 			Time("expiry", newExpiry).
@@ -150,7 +149,7 @@ func (s *Service) TryReloadCertificate(ctx context.Context) {
 		return
 	}
 
-	log.Info().
+	s.log.Info().
 		Str("issued_to", cert.Subject.CommonName).
 		Str("issued_by", cert.Issuer.CommonName).
 		Time("valid_until", newExpiry).
@@ -163,7 +162,7 @@ func (s *Service) GetCertificate(_ *tls.ClientHelloInfo) (*tls.Certificate, erro
 	currentCert := s.currentCert.Load()
 	cert, err := x509.ParseCertificate(currentCert.Certificate[0])
 	if err != nil || cert == nil {
-		log.Warn().Err(err).Msg("Failed to parse certificate")
+		s.log.Warn().Err(err).Msg("Failed to parse certificate")
 		return nil, errors.New("could not parse certificate")
 	}
 
@@ -173,7 +172,7 @@ func (s *Service) GetCertificate(_ *tls.ClientHelloInfo) (*tls.Certificate, erro
 	// The code block below should be commented out or removed if we don't want to reload automatically the certificate if it is expired.
 	expiry := cert.NotAfter
 	if expiry.Before(time.Now()) {
-		log.Warn().
+		s.log.Warn().
 			Str("issued_to", cert.Subject.CommonName).
 			Str("issued_by", cert.Issuer.CommonName).
 			Time("expiry", expiry).
@@ -202,14 +201,14 @@ func (s *Service) GetClientTLSConfig(ctx context.Context) (*tls.Config, error) {
 
 	cert, err := x509.ParseCertificate(currentCert.Certificate[0])
 	if err != nil || cert == nil {
-		log.Warn().Err(err).Msg("Failed to parse certificate")
+		s.log.Warn().Err(err).Msg("Failed to parse certificate")
 		return nil, errors.New("could not parse certificate")
 	}
 
 	// Auto-reload if expired.
 	expiry := cert.NotAfter
 	if expiry.Before(time.Now()) {
-		log.Warn().
+		s.log.Warn().
 			Str("issued_to", cert.Subject.CommonName).
 			Str("issued_by", cert.Issuer.CommonName).
 			Time("expiry", expiry).

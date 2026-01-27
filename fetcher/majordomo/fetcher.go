@@ -25,13 +25,11 @@ import (
 
 // Fetcher implements fetcher.Fetcher using go-majordomo for flexible certificate retrieval.
 type Fetcher struct {
+	log       zerolog.Logger
 	majordomo majordomo.Service
 }
 
 var _ fetcher.Fetcher = (*Fetcher)(nil)
-
-// module-wide log.
-var log zerolog.Logger
 
 // New creates a new majordomo fetcher.
 func New(ctx context.Context, params ...Parameter) (*Fetcher, error) {
@@ -41,12 +39,13 @@ func New(ctx context.Context, params ...Parameter) (*Fetcher, error) {
 	}
 
 	// Set logging.
-	log = zerologger.With().Str("service", "certmanager").Str("impl", "fetcher").Str("type", "majordomo").Logger()
+	log := zerologger.With().Str("service", "certmanager").Str("impl", "fetcher").Str("type", "majordomo").Logger()
 	if parameters.logLevel != log.GetLevel() {
 		log = log.Level(parameters.logLevel)
 	}
 
 	return &Fetcher{
+		log:       log,
 		majordomo: parameters.majordomo,
 	}, nil
 }
