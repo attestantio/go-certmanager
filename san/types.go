@@ -24,17 +24,34 @@ type CertificateSANs struct {
 }
 
 // IdentitySource indicates where the client identity was extracted from.
-type IdentitySource string
+type IdentitySource uint
 
 const (
-	// IdentitySourceSANDNS indicates the identity was extracted from a DNS name in the SAN extension.
-	IdentitySourceSANDNS IdentitySource = "san-dns"
-	// IdentitySourceSANIP indicates the identity was extracted from an IP address in the SAN extension.
-	IdentitySourceSANIP IdentitySource = "san-ip"
-	// IdentitySourceSANEmail indicates the identity was extracted from an email address in the SAN extension.
-	IdentitySourceSANEmail IdentitySource = "san-email"
-	// IdentitySourceCN indicates the identity was extracted from the Common Name (legacy fallback).
-	IdentitySourceCN IdentitySource = "cn"
 	// IdentitySourceUnknown indicates no identity could be extracted from the certificate.
-	IdentitySourceUnknown IdentitySource = ""
+	IdentitySourceUnknown IdentitySource = iota
+	// IdentitySourceSANDNS indicates the identity was extracted from a DNS name in the SAN extension.
+	IdentitySourceSANDNS
+	// IdentitySourceSANIP indicates the identity was extracted from an IP address in the SAN extension.
+	IdentitySourceSANIP
+	// IdentitySourceSANEmail indicates the identity was extracted from an email address in the SAN extension.
+	IdentitySourceSANEmail
+	// IdentitySourceCN indicates the identity was extracted from the Common Name (legacy fallback).
+	IdentitySourceCN
 )
+
+// identitySourceStrings are the strings for identity sources.
+var identitySourceStrings = [...]string{
+	"unknown",
+	"san-dns",
+	"san-ip",
+	"san-email",
+	"cn",
+}
+
+// String returns a string representation of the identity source.
+func (s IdentitySource) String() string {
+	if int(s) >= len(identitySourceStrings) {
+		return identitySourceStrings[0] // Return "unknown" for out-of-range values.
+	}
+	return identitySourceStrings[s]
+}
