@@ -36,8 +36,8 @@ type Service struct {
 	certKeyURI    string
 
 	lastReloadAttemptTime time.Time
-	currentCertMutex      sync.RWMutex
 	currentCert           atomic.Pointer[tls.Certificate]
+	currentCertMutex      sync.RWMutex
 }
 
 // New creates a new server certificate manager.
