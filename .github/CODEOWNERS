@@ -1,3 +1,6 @@
-# Default owner for everything in the repo
-* @AntiD2ta
-* @Bez625
+# CODEOWNERS file for go-certmanager
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owners for everything in the repo
+# These users/teams will be requested for review when someone opens a pull request
+* @attestantio/bos-developers
