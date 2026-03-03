@@ -1,6 +1,8 @@
 CUSTOM_GCL := ./custom-gcl
 
-# Build custom golangci-lint if needed
+# Always rebuild custom golangci-lint to avoid stale binary issues
+# (e.g. Go toolchain upgrades that invalidate the cached binary).
+.PHONY: $(CUSTOM_GCL)
 $(CUSTOM_GCL): .custom-gcl.yml
 	golangci-lint custom
 
