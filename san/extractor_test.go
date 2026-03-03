@@ -18,11 +18,11 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"net"
-	"reflect"
 	"testing"
 
 	"github.com/attestantio/go-certmanager/san"
 	certtesting "github.com/attestantio/go-certmanager/testing"
+	"github.com/stretchr/testify/require"
 )
 
 func TestExtractIdentity(t *testing.T) {
@@ -52,21 +52,13 @@ func TestExtractIdentity(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			pair, err := tls.X509KeyPair([]byte(tt.certPEM), []byte(tt.keyPEM))
-			if err != nil {
-				t.Fatalf("Failed to load certificate: %v", err)
-			}
+			require.NoError(t, err)
 			cert, err := x509.ParseCertificate(pair.Certificate[0])
-			if err != nil {
-				t.Fatalf("Failed to parse certificate: %v", err)
-			}
+			require.NoError(t, err)
 
 			identity, source := san.ExtractIdentity(cert)
-			if identity != tt.expectedIdentity {
-				t.Errorf("Expected identity %q, got %q", tt.expectedIdentity, identity)
-			}
-			if source != tt.expectedSource {
-				t.Errorf("Expected source %q, got %q", tt.expectedSource, source)
-			}
+			require.Equal(t, tt.expectedIdentity, identity)
+			require.Equal(t, tt.expectedSource, source)
 		})
 	}
 }
@@ -419,16 +411,9 @@ func TestExtractIdentityPriority(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Use reflection to call the unexported function
-			// In a real test, we'd either export it or test through the interceptor
 			identity, source := san.ExtractIdentity(tt.cert)
-
-			if identity != tt.wantIdentity {
-				t.Errorf("Identity mismatch: want %s, got %s", tt.wantIdentity, identity)
-			}
-			if source != tt.wantSource {
-				t.Errorf("Source mismatch: want %s, got %s", tt.wantSource, source)
-			}
+			require.Equal(t, tt.wantIdentity, identity)
+			require.Equal(t, tt.wantSource, source)
 		})
 	}
 }
@@ -568,22 +553,10 @@ func TestExtractAllSANs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			sans := san.ExtractAllSANs(tt.cert)
 
-			if sans == nil {
-				t.Fatalf("SANs are nil")
-			}
-			if !reflect.DeepEqual(tt.wantSANs.DNSNames, sans.DNSNames) {
-				t.Errorf("DNS names mismatch: want %v, got %v", tt.wantSANs.DNSNames, sans.DNSNames)
-			}
-			if !reflect.DeepEqual(tt.wantSANs.IPAddresses, sans.IPAddresses) {
-				t.Errorf("IP addresses mismatch: want %v, got %v", tt.wantSANs.IPAddresses, sans.IPAddresses)
-			}
-			if !reflect.DeepEqual(tt.wantSANs.EmailAddresses, sans.EmailAddresses) {
-				t.Errorf("Email addresses mismatch: want %v, got %v", tt.wantSANs.EmailAddresses, sans.EmailAddresses)
-			}
+			require.NotNil(t, sans)
+			require.Equal(t, tt.wantSANs.DNSNames, sans.DNSNames)
+			require.Equal(t, tt.wantSANs.IPAddresses, sans.IPAddresses)
+			require.Equal(t, tt.wantSANs.EmailAddresses, sans.EmailAddresses)
 		})
 	}
-}
-
-func pkixName(cn string) pkix.Name {
-	return pkix.Name{CommonName: cn}
 }

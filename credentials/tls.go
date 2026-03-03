@@ -43,20 +43,23 @@ func NewServerTLSConfig(
 	serverCertMgr server.Service,
 	caCertPEM []byte,
 ) (*tls.Config, error) {
+	if len(caCertPEM) == 0 {
+		return nil, errors.New("CA certificate PEM is required when client cert verification is enabled")
+	}
+
 	baseCfg, err := serverCertMgr.GetTLSConfig(ctx)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get base TLS config")
 	}
 
 	certPool := x509.NewCertPool()
-	if len(caCertPEM) > 0 {
-		if ok := certPool.AppendCertsFromPEM(caCertPEM); !ok {
-			return nil, errors.New("could not add CA certificate to pool")
-		}
+	if ok := certPool.AppendCertsFromPEM(caCertPEM); !ok {
+		return nil, errors.New("could not add CA certificate to pool")
 	}
 
-	baseCfg.ClientAuth = tls.RequireAndVerifyClientCert
-	baseCfg.ClientCAs = certPool
+	cfg := baseCfg.Clone()
+	cfg.ClientAuth = tls.RequireAndVerifyClientCert
+	cfg.ClientCAs = certPool
 
-	return baseCfg, nil
+	return cfg, nil
 }

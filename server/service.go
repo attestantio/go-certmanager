@@ -25,11 +25,11 @@ type Service interface {
 	// It automatically reloads expired certificates.
 	GetCertificate(info *tls.ClientHelloInfo) (*tls.Certificate, error)
 
-	// TryReloadCertificate attempts to reload the certificate from its source.
+	// ReloadCertificate attempts to reload the certificate from its source.
 	// This is thread-safe and non-blocking. If a reload is already in progress,
 	// this method returns immediately without waiting.
 	// Typically called in response to SIGHUP or expiry detection.
-	TryReloadCertificate(ctx context.Context)
+	ReloadCertificate(ctx context.Context)
 
 	// GetTLSConfig returns a TLS configuration for server use.
 	// The returned config includes GetCertificate callback and minimum TLS version.
@@ -43,7 +43,7 @@ type Service interface {
 	//
 	// This is useful when the same certificate is used for both server and client
 	// roles (e.g., in peer-to-peer communication). When certificates are reloaded
-	// via TryReloadCertificate(), subsequent calls to GetClientTLSConfig() will
+	// via ReloadCertificate(), subsequent calls to GetClientTLSConfig() will
 	// return the new certificate.
 	GetClientTLSConfig(ctx context.Context) (*tls.Config, error)
 }

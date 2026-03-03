@@ -22,10 +22,21 @@ import (
 	"time"
 
 	"github.com/attestantio/go-certmanager/fetcher"
+	"github.com/attestantio/go-certmanager/server"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	zerologger "github.com/rs/zerolog/log"
 )
+
+// certWithExpiry bundles a TLS certificate with its cached expiry time,
+// avoiding repeated x509.ParseCertificate calls on the hot path.
+type certWithExpiry struct {
+	cert   *tls.Certificate
+	expiry time.Time
+}
+
+// Ensure Service implements server.Service.
+var _ server.Service = (*Service)(nil)
 
 // Service is the standard server certificate manager implementation.
 type Service struct {
@@ -35,9 +46,8 @@ type Service struct {
 	certPEMURI    string
 	certKeyURI    string
 
-	lastReloadAttemptTime time.Time
-	currentCert           atomic.Pointer[tls.Certificate]
-	currentCertMutex      sync.RWMutex
+	currentCert      atomic.Pointer[certWithExpiry]
+	currentCertMutex sync.Mutex
 }
 
 // New creates a new server certificate manager.
@@ -92,23 +102,29 @@ func New(ctx context.Context, params ...Parameter) (*Service, error) {
 		certKeyURI:    parameters.certKeyURI,
 		reloadTimeout: parameters.reloadTimeout,
 	}
-	s.currentCert.Store(&serverCert)
+	s.currentCert.Store(&certWithExpiry{
+		cert:   &serverCert,
+		expiry: cert.NotAfter,
+	})
 	return s, nil
 }
 
-func (s *Service) TryReloadCertificate(ctx context.Context) {
+// ReloadCertificate attempts to reload the certificate from its source.
+// This is thread-safe and non-blocking. If a reload is already in progress,
+// this method returns immediately without waiting.
+func (s *Service) ReloadCertificate(ctx context.Context) {
 	if !s.currentCertMutex.TryLock() {
 		// Certificate is already being reloaded; do nothing.
 		return
 	}
 	defer s.currentCertMutex.Unlock()
 
-	s.lastReloadAttemptTime = time.Now()
+	lastReloadAttemptTime := time.Now()
 
 	if s.reloadTimeout > 0 {
 		var cancel context.CancelFunc
 		// Give up on the reload if it takes longer than the reload timeout.
-		ctx, cancel = context.WithDeadline(ctx, s.lastReloadAttemptTime.Add(s.reloadTimeout))
+		ctx, cancel = context.WithDeadline(ctx, lastReloadAttemptTime.Add(s.reloadTimeout))
 		defer cancel()
 	}
 
@@ -140,7 +156,7 @@ func (s *Service) TryReloadCertificate(ctx context.Context) {
 	}
 
 	newExpiry := cert.NotAfter
-	if newExpiry.Before(time.Now()) {
+	if newExpiry.Before(lastReloadAttemptTime) {
 		s.log.Warn().
 			Str("issued_to", cert.Subject.CommonName).
 			Str("issued_by", cert.Issuer.CommonName).
@@ -155,77 +171,76 @@ func (s *Service) TryReloadCertificate(ctx context.Context) {
 		Time("valid_until", newExpiry).
 		Msg("Server certificate reloaded successfully")
 
-	s.currentCert.Store(&serverCert)
+	s.currentCert.Store(&certWithExpiry{
+		cert:   &serverCert,
+		expiry: newExpiry,
+	})
 }
 
+// GetCertificate returns the current certificate for TLS handshake.
+// This method is designed to be used as tls.Config.GetCertificate callback.
+// It automatically reloads expired certificates.
 func (s *Service) GetCertificate(_ *tls.ClientHelloInfo) (*tls.Certificate, error) {
-	currentCert := s.currentCert.Load()
-	cert, err := x509.ParseCertificate(currentCert.Certificate[0])
-	if err != nil || cert == nil {
-		s.log.Warn().Err(err).Msg("Failed to parse certificate")
-		return nil, errors.New("could not parse certificate")
+	current := s.currentCert.Load()
+	if current == nil || current.cert == nil {
+		return nil, errors.New("no certificate loaded")
 	}
 
 	// Auto-reload if expired.
-	// Do we want to reload automatically the certificate if it is expired?
-	// If not, shall we return an error or just use the existing certificate?
-	// The code block below should be commented out or removed if we don't want to reload automatically the certificate if it is expired.
-	expiry := cert.NotAfter
-	if expiry.Before(time.Now()) {
+	if current.expiry.Before(time.Now()) {
 		s.log.Warn().
-			Str("issued_to", cert.Subject.CommonName).
-			Str("issued_by", cert.Issuer.CommonName).
-			Time("expiry", expiry).
+			Time("expiry", current.expiry).
 			Msg("Server certificate expired, reloading...")
 		// Reload the certificate.
-		s.TryReloadCertificate(context.Background())
+		s.ReloadCertificate(context.Background())
+		// Re-fetch after reload to pick up the new certificate.
+		current = s.currentCert.Load()
 	}
 
 	// Use the existing certificate.
 	// It will use the expired certificate if it is not reloaded successfully.
-	return currentCert, nil
+	return current.cert, nil
 }
 
-func (s *Service) GetTLSConfig(ctx context.Context) (*tls.Config, error) {
+// GetTLSConfig returns a TLS configuration for server use.
+// The returned config includes GetCertificate callback and minimum TLS version.
+// ctx is currently unused but is accepted for forward-compatibility.
+func (s *Service) GetTLSConfig(_ context.Context) (*tls.Config, error) {
 	return &tls.Config{
 		GetCertificate: s.GetCertificate,
 		MinVersion:     tls.VersionTLS13,
 	}, nil
 }
 
+// GetClientTLSConfig returns a TLS configuration suitable for client connections.
+// Unlike GetTLSConfig(), this returns a config with static certificates suitable
+// for use in gRPC client credentials. The certificate is fetched at call time,
+// so connection pools that call this method when creating new connections will
+// automatically pick up reloaded certificates.
 func (s *Service) GetClientTLSConfig(ctx context.Context) (*tls.Config, error) {
-	currentCert := s.currentCert.Load()
-	if currentCert == nil {
+	current := s.currentCert.Load()
+	if current == nil || current.cert == nil {
 		return nil, errors.New("no certificate loaded")
 	}
 
-	cert, err := x509.ParseCertificate(currentCert.Certificate[0])
-	if err != nil || cert == nil {
-		s.log.Warn().Err(err).Msg("Failed to parse certificate")
-		return nil, errors.New("could not parse certificate")
-	}
-
 	// Auto-reload if expired.
-	expiry := cert.NotAfter
-	if expiry.Before(time.Now()) {
+	if current.expiry.Before(time.Now()) {
 		s.log.Warn().
-			Str("issued_to", cert.Subject.CommonName).
-			Str("issued_by", cert.Issuer.CommonName).
-			Time("expiry", expiry).
+			Time("expiry", current.expiry).
 			Msg("Server certificate expired, reloading for client connection...")
 		// Reload the certificate.
-		s.TryReloadCertificate(ctx)
+		s.ReloadCertificate(ctx)
 
 		// Re-fetch the certificate after reload attempt.
-		currentCert = s.currentCert.Load()
-		if currentCert == nil {
+		current = s.currentCert.Load()
+		if current == nil || current.cert == nil {
 			return nil, errors.New("no certificate loaded after reload attempt")
 		}
 	}
 
 	// Return a TLS config with static certificates for client use.
 	return &tls.Config{
-		Certificates: []tls.Certificate{*currentCert},
+		Certificates: []tls.Certificate{*current.cert},
 		MinVersion:   tls.VersionTLS13,
 	}, nil
 }

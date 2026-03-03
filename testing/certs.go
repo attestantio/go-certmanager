@@ -104,7 +104,7 @@ fm+IPsuBZZDxcbeps2pW5VzxTU2q2Aww0AoucreSnPgZelk8U0WAuS3afqNjCCsd
 qN0RjB5h
 -----END CERTIFICATE-----`
 
-// SignerTest01Crt is the certificate for singer-test01.
+// SignerTest01Crt is the certificate for signer-test01.
 var SignerTest01Crt = `-----BEGIN CERTIFICATE-----
 MIIEWTCCAkGgAwIBAgIQOmQoybWcXv5kykIKSdE5YjANBgkqhkiG9w0BAQsFADAo
 MSYwJAYDVQQDEx1UZXN0aW5nIGNlcnRpZmljYXRlIGF1dGhvcml0eTAgFw0yMDA3
@@ -132,7 +132,7 @@ wu/ezoj80BkYEP5Q6YOT1pDHUsNQwJW/cSV0ELGkfxovrN9VLRGJR+8uJ6j0wWMk
 QQ9lLQoXywGU8bfdgw==
 -----END CERTIFICATE-----`
 
-// SignerTest01Key is the certificate for singer-test01.
+// SignerTest01Key is the certificate for signer-test01.
 //
 //nolint:gosec
 var SignerTest01Key = `-----BEGIN RSA PRIVATE KEY-----
@@ -163,7 +163,7 @@ K3sG1MRrPsTtBgvdnBnvP4m2KiSCXfrsDNfWXGcxPfsLbJhjtmdmQ3roKdiEab3O
 /usXIC7wM2aweTKmN9A1nBcWugIVop7yS3JzQm1uNWfzPWTWuL4RMA==
 -----END RSA PRIVATE KEY-----`
 
-// SignerTest02Crt is the certificate for singer-test02.
+// SignerTest02Crt is the certificate for signer-test02.
 var SignerTest02Crt = `-----BEGIN CERTIFICATE-----
 MIIEWjCCAkKgAwIBAgIRAJ+RF/lFEwUcn+ENsCNJPQAwDQYJKoZIhvcNAQELBQAw
 KDEmMCQGA1UEAxMdVGVzdGluZyBjZXJ0aWZpY2F0ZSBhdXRob3JpdHkwIBcNMjAw
@@ -191,7 +191,7 @@ mdY+QOjjjLpHwI64KqeJuCPbzdUrZW2Vth5DkDUwyX+Cld4G2HI3362NeI4gzWzG
 tnOTVaeHiYpxrArnLno=
 -----END CERTIFICATE-----`
 
-// SignerTest02Key is the key for singer-test02.
+// SignerTest02Key is the key for signer-test02.
 //
 //nolint:gosec
 var SignerTest02Key = `-----BEGIN RSA PRIVATE KEY-----
@@ -222,7 +222,7 @@ kIoeB/eLMWt8jDnyp9G/UoB9jfFgtvZ+gGyPizZQWy02sY0laQnmq9RXA8dkIPtL
 8zLX+YwCSclX5slV0OWwqTlzp757AYHx1rLFgaFt3rVwY6lveVITjH0=
 -----END RSA PRIVATE KEY-----`
 
-// SignerTest03Crt is the certificate for singer-test03.
+// SignerTest03Crt is the certificate for signer-test03.
 var SignerTest03Crt = `-----BEGIN CERTIFICATE-----
 MIIEWjCCAkKgAwIBAgIRAJu28fjs8COygbgpPnST4icwDQYJKoZIhvcNAQELBQAw
 KDEmMCQGA1UEAxMdVGVzdGluZyBjZXJ0aWZpY2F0ZSBhdXRob3JpdHkwIBcNMjAw
@@ -250,7 +250,7 @@ AtjX7nZ2WsXL62pOOPRzmq4mDRklrZOGJLALlAbh2GV6Vlgl0INLhGKMCg4zR9zC
 1PBzRN/jGLFUtPWDcfo=
 -----END CERTIFICATE-----`
 
-// SignerTest03Key is the certificate for singer-test03.
+// SignerTest03Key is the certificate for signer-test03.
 //
 //nolint:gosec
 var SignerTest03Key = `-----BEGIN RSA PRIVATE KEY-----
@@ -281,7 +281,7 @@ GNwlttIq9YzYfrUTLn1sYhROrEUIUFmxc2ttFGPjMUifzosVDUbzMRbwhOpSgzof
 K6dgyN0czk0YccR6L6TCQ+lGL1zNdE567TUMT8DcujPRzPp6NhA=
 -----END RSA PRIVATE KEY-----`
 
-// SignerTest04Crt is the certificate for singer-test04.
+// SignerTest04Crt is the certificate for signer-test04.
 var SignerTest04Crt = `-----BEGIN CERTIFICATE-----
 MIIEWTCCAkGgAwIBAgIQSVCO/y+/drLLF1/Ehl5HAjANBgkqhkiG9w0BAQsFADAo
 MSYwJAYDVQQDEx1UZXN0aW5nIGNlcnRpZmljYXRlIGF1dGhvcml0eTAgFw0yMDA3
@@ -309,7 +309,7 @@ neIRkZVTCW0R6hfKW7lea9rDTHMiyJ8jpscZjqg5KITLxJJ3ipg3miXxjeUMOZRW
 6u0QVYXCMU+um5odFQ==
 -----END CERTIFICATE-----`
 
-// SignerTest04Key is the key for singer-test04.
+// SignerTest04Key is the key for signer-test04.
 //
 //nolint:gosec
 var SignerTest04Key = `-----BEGIN RSA PRIVATE KEY-----
@@ -340,7 +340,7 @@ C7YbhCkChxM6hbgehwGWH8xj1jbVkliPe0XpABVkIACXKtQMzhg4shHlCmRTgZ+h
 xNFJxVdoGRAVUthJyUTcAxWZMH4K5giMdzcQk4YxANekoBmUw3itinA=
 -----END RSA PRIVATE KEY-----`
 
-// SignerTest05Crt is the certificate for singer-test05.
+// SignerTest05Crt is the certificate for signer-test05.
 var SignerTest05Crt = `-----BEGIN CERTIFICATE-----
 MIIEWTCCAkGgAwIBAgIQFx8Gc/4fzxgTzS4MtpoovTANBgkqhkiG9w0BAQsFADAo
 MSYwJAYDVQQDEx1UZXN0aW5nIGNlcnRpZmljYXRlIGF1dGhvcml0eTAgFw0yMDA3
@@ -368,7 +368,7 @@ vVTqf0eZISAIaBg+dVBe3NNCAfT89DtCE5j/pnqwbcK5sQYF1oxLLs0Wchz31L7Z
 8lyeVv/66rxC8CrFSQ==
 -----END CERTIFICATE-----`
 
-// SignerTest05Key is the key for singer-test05.
+// SignerTest05Key is the key for signer-test05.
 //
 //nolint:gosec
 var SignerTest05Key = `-----BEGIN RSA PRIVATE KEY-----

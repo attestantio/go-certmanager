@@ -15,6 +15,7 @@ package standard_test
 
 import (
 	"context"
+	"crypto/tls"
 	"crypto/x509"
 	"os"
 	"path/filepath"
@@ -141,8 +142,10 @@ func TestNew(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := standard.New(ctx, tt.params(t)...)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("New() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
 			}
 		})
 	}
@@ -176,7 +179,7 @@ func TestGetCertificate(t *testing.T) {
 	require.NotEmpty(t, x509Cert.Subject.CommonName)
 }
 
-func TestTryReloadCertificate(t *testing.T) {
+func TestReloadCertificate(t *testing.T) {
 	ctx := context.Background()
 
 	// Create temp directory for certificates
@@ -217,7 +220,7 @@ func TestTryReloadCertificate(t *testing.T) {
 	require.NoError(t, err)
 
 	// Trigger reload
-	svc.TryReloadCertificate(ctx)
+	svc.ReloadCertificate(ctx)
 
 	// Get new certificate
 	cert2, err := svc.GetCertificate(nil)
@@ -269,7 +272,7 @@ func TestConcurrentReload(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			svc.TryReloadCertificate(ctx)
+			svc.ReloadCertificate(ctx)
 		}()
 	}
 	wg.Wait()
@@ -298,7 +301,7 @@ func TestReloadTimeout(t *testing.T) {
 	require.NoError(t, err)
 
 	// Reload should complete even with short timeout (mock fetcher is instant)
-	svc.TryReloadCertificate(ctx)
+	svc.ReloadCertificate(ctx)
 
 	cert, err := svc.GetCertificate(nil)
 	require.NoError(t, err)
@@ -325,7 +328,7 @@ func TestGetTLSConfig(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, tlsCfg)
 	require.NotNil(t, tlsCfg.GetCertificate)
-	require.Equal(t, uint16(0x0304), tlsCfg.MinVersion) // TLS 1.3
+	require.Equal(t, uint16(tls.VersionTLS13), tlsCfg.MinVersion)
 
 	// Test GetCertificate callback works
 	cert, err := tlsCfg.GetCertificate(nil)
@@ -353,7 +356,7 @@ func TestGetClientTLSConfig(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, tlsCfg)
 	require.Nil(t, tlsCfg.GetCertificate) // Should not have callback for client config
-	require.Equal(t, uint16(0x0304), tlsCfg.MinVersion) // TLS 1.3
+	require.Equal(t, uint16(tls.VersionTLS13), tlsCfg.MinVersion)
 	require.Len(t, tlsCfg.Certificates, 1) // Should have static certificate
 
 	// Verify certificate is valid
@@ -409,7 +412,7 @@ func TestGetClientTLSConfigWithExpiredCert(t *testing.T) {
 
 	// Call GetClientTLSConfig() - this should:
 	// 1. Detect the certificate is expired
-	// 2. Automatically trigger TryReloadCertificate()
+	// 2. Automatically trigger ReloadCertificate()
 	// 3. Return the newly reloaded valid certificate
 	tlsCfg, err := svc.GetClientTLSConfig(ctx)
 	require.NoError(t, err)
@@ -425,6 +428,69 @@ func TestGetClientTLSConfigWithExpiredCert(t *testing.T) {
 	require.True(t, x509Cert.NotAfter.After(time.Now()), "Certificate should not be expired")
 
 	// Verify that multiple fetches occurred (initial + reload)
+	mu.Lock()
+	require.Equal(t, 2, certFetchCount, "Should have fetched cert twice (initial + reload)")
+	require.Equal(t, 2, keyFetchCount, "Should have fetched key twice (initial + reload)")
+	mu.Unlock()
+}
+
+func TestGetCertificateWithExpiredCert(t *testing.T) {
+	ctx := context.Background()
+
+	// Create a mock fetcher that simulates certificate expiry and auto-reload.
+	// Initial fetch returns expired cert, subsequent fetches return valid cert.
+	var certFetchCount, keyFetchCount int
+	var mu sync.Mutex
+	dynamicFetcher := &dynamicMockFetcher{
+		fetchFunc: func(_ context.Context, uri string) ([]byte, error) {
+			mu.Lock()
+			defer mu.Unlock()
+
+			if uri == "cert.pem" {
+				certFetchCount++
+				if certFetchCount == 1 {
+					// First fetch (during New()): return expired certificate
+					return []byte(certtesting.ExpiredCrt), nil
+				}
+				// Subsequent fetches: return valid certificate (reload succeeds)
+				return []byte(certtesting.SignerTest01Crt), nil
+			}
+			// Keys - must match the cert
+			keyFetchCount++
+			if keyFetchCount == 1 {
+				return []byte(certtesting.ExpiredKey), nil
+			}
+			return []byte(certtesting.SignerTest01Key), nil
+		},
+	}
+
+	// Create service with expired certificate.
+	// New() will log a warning but still load the expired cert.
+	svc, err := standard.New(ctx,
+		standard.WithFetcher(dynamicFetcher),
+		standard.WithCertPEMURI("cert.pem"),
+		standard.WithCertKeyURI("cert.key"),
+	)
+	require.NoError(t, err)
+
+	// Call GetCertificate() - this should:
+	// 1. Detect the certificate is expired
+	// 2. Automatically trigger ReloadCertificate()
+	// 3. Return the newly reloaded valid certificate (not the stale expired one)
+	cert, err := svc.GetCertificate(nil)
+	require.NoError(t, err)
+	require.NotNil(t, cert)
+	require.NotEmpty(t, cert.Certificate)
+
+	// Parse the returned certificate.
+	x509Cert, err := x509.ParseCertificate(cert.Certificate[0])
+	require.NoError(t, err)
+
+	// Verify we got the reloaded valid certificate (NOT the expired one).
+	require.Equal(t, "signer-test01", x509Cert.Subject.CommonName)
+	require.True(t, x509Cert.NotAfter.After(time.Now()), "Certificate should not be expired")
+
+	// Verify that multiple fetches occurred (initial + reload).
 	mu.Lock()
 	require.Equal(t, 2, certFetchCount, "Should have fetched cert twice (initial + reload)")
 	require.Equal(t, 2, keyFetchCount, "Should have fetched key twice (initial + reload)")
@@ -478,7 +544,7 @@ func TestReloadWithInvalidCertificate(t *testing.T) {
 	require.NoError(t, err)
 
 	// Trigger reload - should fail but service should continue with old cert
-	svc.TryReloadCertificate(ctx)
+	svc.ReloadCertificate(ctx)
 
 	// Should still return the old valid certificate
 	cert2, err := svc.GetCertificate(nil)
@@ -524,7 +590,7 @@ func TestReloadWithMismatchedKeyPair(t *testing.T) {
 	require.NoError(t, err)
 
 	// Trigger reload - should fail due to key mismatch
-	svc.TryReloadCertificate(ctx)
+	svc.ReloadCertificate(ctx)
 
 	// Should still return the old valid certificate
 	cert2, err := svc.GetCertificate(nil)

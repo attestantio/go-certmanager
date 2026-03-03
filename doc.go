@@ -39,7 +39,7 @@
 //	tlsConfig, _ := certMgr.GetTLSConfig(ctx)
 //
 //	// Trigger reload (e.g., on SIGHUP)
-//	certMgr.TryReloadCertificate(ctx)
+//	certMgr.ReloadCertificate(ctx)
 //
 // For peer-to-peer scenarios where the same certificate is used for both
 // server and client roles, use GetClientTLSConfig() to get a static
