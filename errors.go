@@ -33,4 +33,7 @@ var (
 
 	// ErrInvalidCAPool is returned when CA certificate cannot be added to pool.
 	ErrInvalidCAPool = errors.New("failed to add CA certificate to pool")
+
+	// ErrNoCertificateLoaded is returned when no certificate has been loaded.
+	ErrNoCertificateLoaded = errors.New("no certificate loaded")
 )

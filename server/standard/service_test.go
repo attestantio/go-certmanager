@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	certmanager "github.com/attestantio/go-certmanager"
 	"github.com/attestantio/go-certmanager/fetcher/majordomo"
 	"github.com/attestantio/go-certmanager/server/standard"
 	certtesting "github.com/attestantio/go-certmanager/testing"
@@ -596,4 +597,53 @@ func TestReloadWithMismatchedKeyPair(t *testing.T) {
 	cert2, err := svc.GetCertificate(nil)
 	require.NoError(t, err)
 	require.Equal(t, cert1.Certificate[0], cert2.Certificate[0], "Should keep old certificate when key mismatch")
+}
+
+func TestNewSentinelErrors(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name     string
+		params   []standard.Parameter
+		sentinel error
+	}{
+		{
+			name: "NoFetcher",
+			params: []standard.Parameter{
+				standard.WithCertPEMURI("cert.pem"),
+				standard.WithCertKeyURI("cert.key"),
+			},
+			sentinel: certmanager.ErrNoFetcher,
+		},
+		{
+			name: "NoCertPEMURI",
+			params: []standard.Parameter{
+				standard.WithFetcher(mock.NewFetcher(map[string][]byte{
+					"cert.pem": []byte("dummy"),
+					"cert.key": []byte("dummy"),
+				})),
+				standard.WithCertKeyURI("cert.key"),
+			},
+			sentinel: certmanager.ErrNoCertPEMURI,
+		},
+		{
+			name: "NoCertKeyURI",
+			params: []standard.Parameter{
+				standard.WithFetcher(mock.NewFetcher(map[string][]byte{
+					"cert.pem": []byte("dummy"),
+					"cert.key": []byte("dummy"),
+				})),
+				standard.WithCertPEMURI("cert.pem"),
+			},
+			sentinel: certmanager.ErrNoCertKeyURI,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := standard.New(ctx, test.params...)
+			require.Error(t, err)
+			require.ErrorIs(t, err, test.sentinel)
+		})
+	}
 }

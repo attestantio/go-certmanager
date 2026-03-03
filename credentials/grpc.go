@@ -15,9 +15,9 @@ package credentials
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/attestantio/go-certmanager/client"
-	"github.com/pkg/errors"
 	"google.golang.org/grpc/credentials"
 )
 
@@ -32,7 +32,7 @@ import (
 func NewGRPCClientCredentials(ctx context.Context, clientCertMgr client.Service) (credentials.TransportCredentials, error) {
 	tlsCfg, err := clientCertMgr.GetTLSConfig(ctx)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to get TLS config")
+		return nil, fmt.Errorf("failed to get TLS config: %w", err)
 	}
 	return credentials.NewTLS(tlsCfg), nil
 }

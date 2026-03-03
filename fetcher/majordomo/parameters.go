@@ -14,7 +14,8 @@
 package majordomo
 
 import (
-	"github.com/pkg/errors"
+	"errors"
+
 	"github.com/rs/zerolog"
 	"github.com/wealdtech/go-majordomo"
 )

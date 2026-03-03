@@ -15,9 +15,9 @@ package majordomo
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/attestantio/go-certmanager/fetcher"
-	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	zerologger "github.com/rs/zerolog/log"
 	"github.com/wealdtech/go-majordomo"
@@ -35,7 +35,7 @@ var _ fetcher.Fetcher = (*Fetcher)(nil)
 func New(ctx context.Context, params ...Parameter) (*Fetcher, error) {
 	parameters, err := parseAndCheckParameters(params...)
 	if err != nil {
-		return nil, errors.Wrap(err, "problem with parameters")
+		return nil, fmt.Errorf("problem with parameters: %w", err)
 	}
 
 	// Set logging.

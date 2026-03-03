@@ -17,13 +17,14 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	certmanager "github.com/attestantio/go-certmanager"
 	"github.com/attestantio/go-certmanager/fetcher"
 	"github.com/attestantio/go-certmanager/server"
-	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	zerologger "github.com/rs/zerolog/log"
 )
@@ -54,7 +55,7 @@ type Service struct {
 func New(ctx context.Context, params ...Parameter) (*Service, error) {
 	parameters, err := parseAndCheckParameters(params...)
 	if err != nil {
-		return nil, errors.Wrap(err, "problem with parameters")
+		return nil, fmt.Errorf("problem with parameters: %w", err)
 	}
 
 	// Set logging.
@@ -66,24 +67,24 @@ func New(ctx context.Context, params ...Parameter) (*Service, error) {
 	// Load the certificates immediately.
 	certPEMBlock, err := parameters.fetcher.Fetch(ctx, parameters.certPEMURI)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to obtain server certificate")
+		return nil, fmt.Errorf("failed to obtain server certificate: %w", err)
 	}
 	certKeyBlock, err := parameters.fetcher.Fetch(ctx, parameters.certKeyURI)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to obtain server key")
+		return nil, fmt.Errorf("failed to obtain server key: %w", err)
 	}
 
 	// Initialize the certificate pair.
 	serverCert, err := tls.X509KeyPair(certPEMBlock, certKeyBlock)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to load certificate pair")
+		return nil, fmt.Errorf("failed to load certificate pair: %w", err)
 	}
 	if len(serverCert.Certificate) == 0 {
-		return nil, errors.New("certificate file does not contain a certificate")
+		return nil, certmanager.ErrEmptyCertificate
 	}
 	cert, err := x509.ParseCertificate(serverCert.Certificate[0])
 	if err != nil || cert == nil {
-		return nil, errors.Wrap(err, "failed to parse server certificate")
+		return nil, fmt.Errorf("failed to parse server certificate: %w", err)
 	}
 	if cert.NotAfter.Before(time.Now()) {
 		log.Warn().Time("expiry", cert.NotAfter).Msg("Server certificate expired")
@@ -183,7 +184,7 @@ func (s *Service) ReloadCertificate(ctx context.Context) {
 func (s *Service) GetCertificate(_ *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	current := s.currentCert.Load()
 	if current == nil || current.cert == nil {
-		return nil, errors.New("no certificate loaded")
+		return nil, certmanager.ErrNoCertificateLoaded
 	}
 
 	// Auto-reload if expired.
@@ -220,7 +221,7 @@ func (s *Service) GetTLSConfig(_ context.Context) (*tls.Config, error) {
 func (s *Service) GetClientTLSConfig(ctx context.Context) (*tls.Config, error) {
 	current := s.currentCert.Load()
 	if current == nil || current.cert == nil {
-		return nil, errors.New("no certificate loaded")
+		return nil, certmanager.ErrNoCertificateLoaded
 	}
 
 	// Auto-reload if expired.
@@ -234,7 +235,7 @@ func (s *Service) GetClientTLSConfig(ctx context.Context) (*tls.Config, error) {
 		// Re-fetch the certificate after reload attempt.
 		current = s.currentCert.Load()
 		if current == nil || current.cert == nil {
-			return nil, errors.New("no certificate loaded after reload attempt")
+			return nil, certmanager.ErrNoCertificateLoaded
 		}
 	}
 

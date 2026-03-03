@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	certmanager "github.com/attestantio/go-certmanager"
 	"github.com/attestantio/go-certmanager/client/standard"
 	"github.com/attestantio/go-certmanager/fetcher/majordomo"
 	certtesting "github.com/attestantio/go-certmanager/testing"
@@ -423,6 +424,49 @@ func TestWithFilesystem(t *testing.T) {
 	require.NotNil(t, cfg.RootCAs)
 	require.Len(t, cfg.Certificates, 1)
 	require.Equal(t, uint16(0x0304), cfg.MinVersion) // TLS 1.3
+}
+
+func TestNewSentinelErrors(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name     string
+		params   []standard.Parameter
+		sentinel error
+	}{
+		{
+			name: "NoFetcher",
+			params: []standard.Parameter{
+				standard.WithCertPEMURI("cert.pem"),
+				standard.WithCertKeyURI("cert.key"),
+			},
+			sentinel: certmanager.ErrNoFetcher,
+		},
+		{
+			name: "NoCertPEMURI",
+			params: []standard.Parameter{
+				standard.WithFetcher(mock.NewFetcher(nil)),
+				standard.WithCertKeyURI("cert.key"),
+			},
+			sentinel: certmanager.ErrNoCertPEMURI,
+		},
+		{
+			name: "NoCertKeyURI",
+			params: []standard.Parameter{
+				standard.WithFetcher(mock.NewFetcher(nil)),
+				standard.WithCertPEMURI("cert.pem"),
+			},
+			sentinel: certmanager.ErrNoCertKeyURI,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := standard.New(ctx, test.params...)
+			require.Error(t, err)
+			require.ErrorIs(t, err, test.sentinel)
+		})
+	}
 }
 
 func TestMultipleGetTLSConfigCalls(t *testing.T) {

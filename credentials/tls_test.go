@@ -16,11 +16,11 @@ package credentials_test
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"testing"
 
 	"github.com/attestantio/go-certmanager/credentials"
 	certtesting "github.com/attestantio/go-certmanager/testing"
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
 
@@ -82,7 +82,7 @@ func TestNewServerTLSConfig(t *testing.T) {
 				},
 			},
 			caCertPEM: []byte("not a valid PEM"),
-			expectErr: "could not add CA certificate to pool",
+			expectErr: "failed to add CA certificate to pool",
 		},
 		{
 			name: "GetTLSConfig error propagated",

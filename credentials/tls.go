@@ -17,9 +17,11 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
+	"fmt"
 
+	certmanager "github.com/attestantio/go-certmanager"
 	"github.com/attestantio/go-certmanager/server"
-	"github.com/pkg/errors"
 )
 
 // NewServerTLSConfig creates a TLS config for gRPC servers with client certificate verification.
@@ -49,12 +51,12 @@ func NewServerTLSConfig(
 
 	baseCfg, err := serverCertMgr.GetTLSConfig(ctx)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to get base TLS config")
+		return nil, fmt.Errorf("failed to get base TLS config: %w", err)
 	}
 
 	certPool := x509.NewCertPool()
 	if ok := certPool.AppendCertsFromPEM(caCertPEM); !ok {
-		return nil, errors.New("could not add CA certificate to pool")
+		return nil, certmanager.ErrInvalidCAPool
 	}
 
 	cfg := baseCfg.Clone()

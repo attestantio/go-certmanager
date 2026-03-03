@@ -17,10 +17,11 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"fmt"
 
+	certmanager "github.com/attestantio/go-certmanager"
 	"github.com/attestantio/go-certmanager/client"
 	"github.com/attestantio/go-certmanager/fetcher"
-	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	zerologger "github.com/rs/zerolog/log"
 )
@@ -40,7 +41,7 @@ var _ client.Service = (*Service)(nil)
 func New(ctx context.Context, params ...Parameter) (*Service, error) {
 	parameters, err := parseAndCheckParameters(params...)
 	if err != nil {
-		return nil, errors.Wrap(err, "problem with parameters")
+		return nil, fmt.Errorf("problem with parameters: %w", err)
 	}
 
 	log := zerologger.With().Str("service", "certmanager").Str("impl", "client").Str("type", "standard").Logger()
@@ -60,16 +61,16 @@ func New(ctx context.Context, params ...Parameter) (*Service, error) {
 func (s *Service) GetCertificatePair(ctx context.Context) (*tls.Certificate, error) {
 	clientCert, err := s.fetcher.Fetch(ctx, s.certPEMURI)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to obtain client certificate")
+		return nil, fmt.Errorf("failed to obtain client certificate: %w", err)
 	}
 	clientKey, err := s.fetcher.Fetch(ctx, s.certKeyURI)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to obtain client key")
+		return nil, fmt.Errorf("failed to obtain client key: %w", err)
 	}
 
 	clientPair, err := tls.X509KeyPair(clientCert, clientKey)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to load client keypair")
+		return nil, fmt.Errorf("failed to load client keypair: %w", err)
 	}
 
 	return &clientPair, nil
@@ -90,11 +91,11 @@ func (s *Service) GetTLSConfig(ctx context.Context) (*tls.Config, error) {
 	if s.caCertURI != "" {
 		caCert, err := s.fetcher.Fetch(ctx, s.caCertURI)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to obtain CA certificate")
+			return nil, fmt.Errorf("failed to obtain CA certificate: %w", err)
 		}
 		cp := x509.NewCertPool()
 		if !cp.AppendCertsFromPEM(caCert) {
-			return nil, errors.New("failed to add CA certificate")
+			return nil, certmanager.ErrInvalidCAPool
 		}
 		tlsCfg.RootCAs = cp
 	}

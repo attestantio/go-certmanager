@@ -14,8 +14,8 @@
 package standard
 
 import (
+	certmanager "github.com/attestantio/go-certmanager"
 	"github.com/attestantio/go-certmanager/fetcher"
-	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 )
 
@@ -85,13 +85,13 @@ func parseAndCheckParameters(params ...Parameter) (*parameters, error) {
 	}
 
 	if parameters.fetcher == nil {
-		return nil, errors.New("no fetcher specified, e.g. go-majordomo fetcher")
+		return nil, certmanager.ErrNoFetcher
 	}
 	if parameters.certPEMURI == "" {
-		return nil, errors.New("no cert PEM URI specified")
+		return nil, certmanager.ErrNoCertPEMURI
 	}
 	if parameters.certKeyURI == "" {
-		return nil, errors.New("no cert key URI specified")
+		return nil, certmanager.ErrNoCertKeyURI
 	}
 
 	return &parameters, nil
