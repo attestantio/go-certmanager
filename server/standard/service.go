@@ -23,10 +23,10 @@ import (
 	"time"
 
 	certmanager "github.com/attestantio/go-certmanager"
-	"github.com/attestantio/go-certmanager/fetcher"
 	"github.com/attestantio/go-certmanager/server"
 	"github.com/rs/zerolog"
 	zerologger "github.com/rs/zerolog/log"
+	"github.com/wealdtech/go-majordomo"
 )
 
 // certWithExpiry bundles a TLS certificate with its cached expiry time,
@@ -42,7 +42,7 @@ var _ server.Service = (*Service)(nil)
 // Service is the standard server certificate manager implementation.
 type Service struct {
 	log           zerolog.Logger
-	fetcher       fetcher.Fetcher
+	majordomo     majordomo.Service
 	reloadTimeout time.Duration
 	certPEMURI    string
 	certKeyURI    string
@@ -65,11 +65,11 @@ func New(ctx context.Context, params ...Parameter) (*Service, error) {
 	}
 
 	// Load the certificates immediately.
-	certPEMBlock, err := parameters.fetcher.Fetch(ctx, parameters.certPEMURI)
+	certPEMBlock, err := parameters.majordomo.Fetch(ctx, parameters.certPEMURI)
 	if err != nil {
 		return nil, fmt.Errorf("failed to obtain server certificate: %w", err)
 	}
-	certKeyBlock, err := parameters.fetcher.Fetch(ctx, parameters.certKeyURI)
+	certKeyBlock, err := parameters.majordomo.Fetch(ctx, parameters.certKeyURI)
 	if err != nil {
 		return nil, fmt.Errorf("failed to obtain server key: %w", err)
 	}
@@ -98,7 +98,7 @@ func New(ctx context.Context, params ...Parameter) (*Service, error) {
 
 	s := &Service{
 		log:           log,
-		fetcher:       parameters.fetcher,
+		majordomo:     parameters.majordomo,
 		certPEMURI:    parameters.certPEMURI,
 		certKeyURI:    parameters.certKeyURI,
 		reloadTimeout: parameters.reloadTimeout,
@@ -129,12 +129,12 @@ func (s *Service) ReloadCertificate(ctx context.Context) {
 		defer cancel()
 	}
 
-	certPEMBlock, err := s.fetcher.Fetch(ctx, s.certPEMURI)
+	certPEMBlock, err := s.majordomo.Fetch(ctx, s.certPEMURI)
 	if err != nil {
 		s.log.Warn().Err(err).Msg("Failed to obtain server certificate during reload")
 		return
 	}
-	certKeyBlock, err := s.fetcher.Fetch(ctx, s.certKeyURI)
+	certKeyBlock, err := s.majordomo.Fetch(ctx, s.certKeyURI)
 	if err != nil {
 		s.log.Warn().Err(err).Msg("Failed to obtain server key during reload")
 		return

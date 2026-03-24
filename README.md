@@ -12,7 +12,7 @@ The library supports:
   - Server certificate loading with automatic reload on expiry or SIGHUP signal
   - Client certificate loading for gRPC and TLS connections
   - Subject Alternative Name (SAN) extraction following RFC 6125
-  - Flexible certificate fetching via pluggable Fetcher interface
+  - Flexible certificate fetching via majordomo service
   - Thread-safe operations for concurrent access
 
 This library is used by Attestant projects such as [Vouch](https://github.com/attestantio/vouch) (Ethereum validator client) and [Dirk](https://github.com/attestantio/dirk) (distributed remote keymanager) for certificate management in Ethereum staking infrastructure.
@@ -49,7 +49,7 @@ The server package provides certificate management for TLS servers with automati
 import servercert "github.com/attestantio/go-certmanager/server/standard"
 
 certMgr, err := servercert.New(ctx,
-    servercert.WithFetcher(fetcher),
+    servercert.WithMajordomo(majordomoSvc),
     servercert.WithCertPEMURI("file:///path/to/server.crt"),
     servercert.WithCertKeyURI("file:///path/to/server.key"),
 )
@@ -83,7 +83,7 @@ The client package provides certificate loading for client connections.
 import clientcert "github.com/attestantio/go-certmanager/client/standard"
 
 certMgr, err := clientcert.New(ctx,
-    clientcert.WithFetcher(fetcher),
+    clientcert.WithMajordomo(majordomoSvc),
     clientcert.WithCertPEMURI("file:///path/to/client.crt"),
     clientcert.WithCertKeyURI("file:///path/to/client.key"),
     clientcert.WithCACertURI("file:///path/to/ca.crt"), // Optional
@@ -98,15 +98,7 @@ tlsConfig, err := certMgr.GetTLSConfig(ctx)
 
 ### Certificate Fetching
 
-The fetcher package provides an abstraction for certificate sources. Use the majordomo implementation for flexible fetching from files, HTTP endpoints, or secret vaults.
-
-```go
-import majordomofetcher "github.com/attestantio/go-certmanager/fetcher/majordomo"
-
-fetcher, err := majordomofetcher.New(ctx,
-    majordomofetcher.WithMajordomo(majordomoSvc),
-)
-```
+Certificate data is fetched via [go-majordomo](https://github.com/wealdtech/go-majordomo), which supports pluggable "confidants" for files, HTTP endpoints, secret vaults, etc. Pass a `majordomo.Service` directly to `WithMajordomo()` when creating certificate managers.
 
 ### SAN Extraction
 

@@ -22,6 +22,6 @@ We will acknowledge receipt within 48 hours and provide a detailed response with
 This library handles TLS certificates and private keys. Users should:
 
 - Store private keys securely with appropriate file permissions
-- Use secure fetcher implementations for production environments
+- Use secure majordomo confidants for production environments
 - Regularly rotate certificates before expiry
 - Monitor certificate reload logs for failures

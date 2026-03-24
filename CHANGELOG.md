@@ -19,9 +19,9 @@ All notable changes to this project will be documented in this file.
   - `GetTLSConfig()` for client-side TLS configuration
   - `GetCertificatePair()` for direct certificate access
 
-- **Fetcher Abstraction** (`fetcher/`)
-  - Pluggable `Fetcher` interface for certificate retrieval
-  - Majordomo implementation supporting files, HTTP endpoints, and secret vaults
+- **Certificate Fetching**
+  - Direct integration with go-majordomo for flexible certificate retrieval
+  - Supports files, HTTP endpoints, and secret vaults via majordomo confidants
 
 - **SAN Extraction Utilities** (`san/`)
   - RFC 6125-compliant identity extraction from X.509 certificates
@@ -35,4 +35,4 @@ All notable changes to this project will be documented in this file.
 
 - **Testing Utilities** (`testing/`)
   - Pre-generated test certificates (valid and expired) for unit testing
-  - Mock fetcher implementation for controlled testing scenarios
+  - Mock majordomo implementation for controlled testing scenarios

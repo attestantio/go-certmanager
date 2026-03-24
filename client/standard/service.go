@@ -21,15 +21,15 @@ import (
 
 	certmanager "github.com/attestantio/go-certmanager"
 	"github.com/attestantio/go-certmanager/client"
-	"github.com/attestantio/go-certmanager/fetcher"
 	"github.com/rs/zerolog"
 	zerologger "github.com/rs/zerolog/log"
+	"github.com/wealdtech/go-majordomo"
 )
 
 // Service is the standard client certificate manager implementation.
 type Service struct {
 	log        zerolog.Logger
-	fetcher    fetcher.Fetcher
+	majordomo  majordomo.Service
 	certPEMURI string
 	certKeyURI string
 	caCertURI  string
@@ -51,19 +51,20 @@ func New(ctx context.Context, params ...Parameter) (*Service, error) {
 
 	return &Service{
 		log:        log,
-		fetcher:    parameters.fetcher,
+		majordomo:  parameters.majordomo,
 		certPEMURI: parameters.certPEMURI,
 		certKeyURI: parameters.certKeyURI,
 		caCertURI:  parameters.caCertURI,
 	}, nil
 }
 
+// GetCertificatePair fetches the certificate and key via majordomo and returns a TLS certificate pair.
 func (s *Service) GetCertificatePair(ctx context.Context) (*tls.Certificate, error) {
-	clientCert, err := s.fetcher.Fetch(ctx, s.certPEMURI)
+	clientCert, err := s.majordomo.Fetch(ctx, s.certPEMURI)
 	if err != nil {
 		return nil, fmt.Errorf("failed to obtain client certificate: %w", err)
 	}
-	clientKey, err := s.fetcher.Fetch(ctx, s.certKeyURI)
+	clientKey, err := s.majordomo.Fetch(ctx, s.certKeyURI)
 	if err != nil {
 		return nil, fmt.Errorf("failed to obtain client key: %w", err)
 	}
@@ -76,6 +77,9 @@ func (s *Service) GetCertificatePair(ctx context.Context) (*tls.Certificate, err
 	return &clientPair, nil
 }
 
+// GetTLSConfig returns a TLS configuration for client use.
+// The returned config includes the client certificate pair and minimum TLS version.
+// If a CA certificate URI is configured, it is used to create a custom root CA pool.
 func (s *Service) GetTLSConfig(ctx context.Context) (*tls.Config, error) {
 	clientPair, err := s.GetCertificatePair(ctx)
 	if err != nil {
@@ -89,7 +93,7 @@ func (s *Service) GetTLSConfig(ctx context.Context) (*tls.Config, error) {
 
 	// Add CA certificate if specified.
 	if s.caCertURI != "" {
-		caCert, err := s.fetcher.Fetch(ctx, s.caCertURI)
+		caCert, err := s.majordomo.Fetch(ctx, s.caCertURI)
 		if err != nil {
 			return nil, fmt.Errorf("failed to obtain CA certificate: %w", err)
 		}

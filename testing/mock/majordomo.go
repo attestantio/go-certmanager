@@ -15,43 +15,47 @@ package mock
 
 import (
 	"context"
-	"errors"
+	"fmt"
+
+	"github.com/wealdtech/go-majordomo"
 )
 
-// Fetcher is a mock fetcher implementation for testing.
-type Fetcher struct {
+// Majordomo is a mock majordomo implementation for testing.
+type Majordomo struct {
 	data map[string][]byte
 	err  error
 }
 
-// NewFetcher creates a new mock fetcher with preset URI-to-data mappings.
+var _ majordomo.Service = (*Majordomo)(nil)
+
+// NewMajordomo creates a new mock majordomo with preset URI-to-data mappings.
 // The data map should contain URIs as keys and certificate/key data as values.
 //
 // Example usage:
 //
-//	fetcher := mock.NewFetcher(map[string][]byte{
+//	majordomoSvc := mock.NewMajordomo(map[string][]byte{
 //	    "file:///path/to/cert.pem": []byte(testing.Client01Crt),
 //	    "file:///path/to/cert.key": []byte(testing.Client01Key),
 //	})
-func NewFetcher(data map[string][]byte) *Fetcher {
-	return &Fetcher{data: data}
+func NewMajordomo(data map[string][]byte) *Majordomo {
+	return &Majordomo{data: data}
 }
 
-// NewFetcherWithError creates a mock fetcher that always returns the specified error.
+// NewMajordomoWithError creates a mock majordomo that always returns the specified error.
 // Useful for testing error handling in certificate management code.
-func NewFetcherWithError(err error) *Fetcher {
-	return &Fetcher{err: err}
+func NewMajordomoWithError(err error) *Majordomo {
+	return &Majordomo{err: err}
 }
 
-// Fetch implements fetcher.Fetcher.
+// Fetch implements majordomo.Service.
 // Returns the preset data for the given URI, or an error if configured to fail.
-func (f *Fetcher) Fetch(ctx context.Context, uri string) ([]byte, error) {
-	if f.err != nil {
-		return nil, f.err
+func (m *Majordomo) Fetch(_ context.Context, uri string) ([]byte, error) {
+	if m.err != nil {
+		return nil, m.err
 	}
-	data, ok := f.data[uri]
+	data, ok := m.data[uri]
 	if !ok {
-		return nil, errors.New("not found")
+		return nil, fmt.Errorf("URI %q not found in mock", uri)
 	}
 	return data, nil
 }

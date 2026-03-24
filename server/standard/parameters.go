@@ -17,13 +17,13 @@ import (
 	"time"
 
 	certmanager "github.com/attestantio/go-certmanager"
-	"github.com/attestantio/go-certmanager/fetcher"
 	"github.com/rs/zerolog"
+	"github.com/wealdtech/go-majordomo"
 )
 
 type parameters struct {
 	logLevel      zerolog.Level
-	fetcher       fetcher.Fetcher
+	majordomo     majordomo.Service
 	reloadTimeout time.Duration
 	certPEMURI    string
 	certKeyURI    string
@@ -47,10 +47,10 @@ func WithLogLevel(logLevel zerolog.Level) Parameter {
 	})
 }
 
-// WithFetcher sets the certificate fetcher for this module.
-func WithFetcher(fetcher fetcher.Fetcher) Parameter {
+// WithMajordomo sets the majordomo service for this module.
+func WithMajordomo(service majordomo.Service) Parameter {
 	return parameterFunc(func(p *parameters) {
-		p.fetcher = fetcher
+		p.majordomo = service
 	})
 }
 
@@ -87,8 +87,8 @@ func parseAndCheckParameters(params ...Parameter) (*parameters, error) {
 		}
 	}
 
-	if parameters.fetcher == nil {
-		return nil, certmanager.ErrNoFetcher
+	if parameters.majordomo == nil {
+		return nil, certmanager.ErrNoMajordomo
 	}
 	if parameters.certPEMURI == "" {
 		return nil, certmanager.ErrNoCertPEMURI

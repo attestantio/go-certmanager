@@ -18,7 +18,7 @@
 //   - Server certificate loading with automatic reload on expiry or SIGHUP signal
 //   - Client certificate loading for gRPC and TLS connections
 //   - Subject Alternative Name (SAN) extraction following RFC 6125
-//   - Flexible certificate fetching via pluggable Fetcher interface
+//   - Flexible certificate fetching via majordomo service
 //   - Thread-safe operations for concurrent access
 //
 // Server Certificate Management:
@@ -30,7 +30,7 @@
 //	import servercert "github.com/attestantio/go-certmanager/server/standard"
 //
 //	certMgr, err := servercert.New(ctx,
-//	    servercert.WithFetcher(fetcher),
+//	    servercert.WithMajordomo(majordomoSvc),
 //	    servercert.WithCertPEMURI("file:///path/to/server.crt"),
 //	    servercert.WithCertKeyURI("file:///path/to/server.key"),
 //	)
@@ -60,7 +60,7 @@
 //	import clientcert "github.com/attestantio/go-certmanager/client/standard"
 //
 //	certMgr, err := clientcert.New(ctx,
-//	    clientcert.WithFetcher(fetcher),
+//	    clientcert.WithMajordomo(majordomoSvc),
 //	    clientcert.WithCertPEMURI("file:///path/to/client.crt"),
 //	    clientcert.WithCertKeyURI("file:///path/to/client.key"),
 //	    clientcert.WithCACertURI("file:///path/to/ca.crt"), // Optional
@@ -72,15 +72,9 @@
 //
 // Certificate Fetching:
 //
-// The fetcher package provides an abstraction for certificate sources.
-// Use the majordomo implementation for flexible fetching from files,
-// HTTP endpoints, or secret vaults.
-//
-//	import majordomofetcher "github.com/attestantio/go-certmanager/fetcher/majordomo"
-//
-//	fetcher, err := majordomofetcher.New(ctx,
-//	    majordomofetcher.WithMajordomo(majordomoSvc),
-//	)
+// Certificate data is fetched via go-majordomo (github.com/wealdtech/go-majordomo),
+// which supports pluggable "confidants" for files, HTTP endpoints, secret vaults, etc.
+// Pass a majordomo.Service directly to WithMajordomo() when creating certificate managers.
 //
 // SAN Extraction:
 //

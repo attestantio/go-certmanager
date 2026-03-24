@@ -24,11 +24,11 @@ import (
 	"time"
 
 	certmanager "github.com/attestantio/go-certmanager"
-	"github.com/attestantio/go-certmanager/fetcher/majordomo"
 	"github.com/attestantio/go-certmanager/server/standard"
 	certtesting "github.com/attestantio/go-certmanager/testing"
 	"github.com/attestantio/go-certmanager/testing/mock"
 	"github.com/stretchr/testify/require"
+	"github.com/wealdtech/go-majordomo"
 	fileconfidant "github.com/wealdtech/go-majordomo/confidants/file"
 	majordomostandard "github.com/wealdtech/go-majordomo/standard"
 )
@@ -62,12 +62,12 @@ func TestNew(t *testing.T) {
 			name: "Success",
 			params: func(t *testing.T) []standard.Parameter {
 				t.Helper()
-				fetcher := mock.NewFetcher(map[string][]byte{
+				majordomoSvc := mock.NewMajordomo(map[string][]byte{
 					"cert.pem": []byte(certtesting.SignerTest01Crt),
 					"cert.key": []byte(certtesting.SignerTest01Key),
 				})
 				return []standard.Parameter{
-					standard.WithFetcher(fetcher),
+					standard.WithMajordomo(majordomoSvc),
 					standard.WithCertPEMURI("cert.pem"),
 					standard.WithCertKeyURI("cert.key"),
 				}
@@ -75,7 +75,7 @@ func TestNew(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "NoFetcher",
+			name: "NoMajordomo",
 			params: func(t *testing.T) []standard.Parameter {
 				t.Helper()
 				return []standard.Parameter{
@@ -89,9 +89,9 @@ func TestNew(t *testing.T) {
 			name: "NoCertPEMURI",
 			params: func(t *testing.T) []standard.Parameter {
 				t.Helper()
-				fetcher := mock.NewFetcher(map[string][]byte{})
+				majordomoSvc := mock.NewMajordomo(map[string][]byte{})
 				return []standard.Parameter{
-					standard.WithFetcher(fetcher),
+					standard.WithMajordomo(majordomoSvc),
 					standard.WithCertKeyURI("cert.key"),
 				}
 			},
@@ -101,9 +101,9 @@ func TestNew(t *testing.T) {
 			name: "NoCertKeyURI",
 			params: func(t *testing.T) []standard.Parameter {
 				t.Helper()
-				fetcher := mock.NewFetcher(map[string][]byte{})
+				majordomoSvc := mock.NewMajordomo(map[string][]byte{})
 				return []standard.Parameter{
-					standard.WithFetcher(fetcher),
+					standard.WithMajordomo(majordomoSvc),
 					standard.WithCertPEMURI("cert.pem"),
 				}
 			},
@@ -113,12 +113,12 @@ func TestNew(t *testing.T) {
 			name: "InvalidCertificate",
 			params: func(t *testing.T) []standard.Parameter {
 				t.Helper()
-				fetcher := mock.NewFetcher(map[string][]byte{
+				majordomoSvc := mock.NewMajordomo(map[string][]byte{
 					"cert.pem": []byte("invalid"),
 					"cert.key": []byte("invalid"),
 				})
 				return []standard.Parameter{
-					standard.WithFetcher(fetcher),
+					standard.WithMajordomo(majordomoSvc),
 					standard.WithCertPEMURI("cert.pem"),
 					standard.WithCertKeyURI("cert.key"),
 				}
@@ -126,12 +126,12 @@ func TestNew(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "FetcherError",
+			name: "FetchError",
 			params: func(t *testing.T) []standard.Parameter {
 				t.Helper()
-				fetcher := mock.NewFetcherWithError(os.ErrNotExist)
+				majordomoSvc := mock.NewMajordomoWithError(os.ErrNotExist)
 				return []standard.Parameter{
-					standard.WithFetcher(fetcher),
+					standard.WithMajordomo(majordomoSvc),
 					standard.WithCertPEMURI("cert.pem"),
 					standard.WithCertKeyURI("cert.key"),
 				}
@@ -154,13 +154,13 @@ func TestNew(t *testing.T) {
 
 func TestGetCertificate(t *testing.T) {
 	ctx := context.Background()
-	fetcher := mock.NewFetcher(map[string][]byte{
+	majordomoSvc := mock.NewMajordomo(map[string][]byte{
 		"cert.pem": []byte(certtesting.SignerTest01Crt),
 		"cert.key": []byte(certtesting.SignerTest01Key),
 	})
 
 	svc, err := standard.New(ctx,
-		standard.WithFetcher(fetcher),
+		standard.WithMajordomo(majordomoSvc),
 		standard.WithCertPEMURI("cert.pem"),
 		standard.WithCertKeyURI("cert.key"),
 	)
@@ -194,15 +194,9 @@ func TestReloadCertificate(t *testing.T) {
 	err = os.WriteFile(keyPath, []byte(certtesting.SignerTest01Key), 0o600)
 	require.NoError(t, err)
 
-	// Create majordomo fetcher with file confidant
-	fetcher, err := majordomo.New(ctx,
-		majordomo.WithMajordomo(newMajordomo(t)),
-	)
-	require.NoError(t, err)
-
-	// Create service
+	// Create service with majordomo file confidant
 	svc, err := standard.New(ctx,
-		standard.WithFetcher(fetcher),
+		standard.WithMajordomo(newMajordomo(t)),
 		standard.WithCertPEMURI("file://"+certPath),
 		standard.WithCertKeyURI("file://"+keyPath),
 	)
@@ -252,15 +246,9 @@ func TestConcurrentReload(t *testing.T) {
 	err = os.WriteFile(keyPath, []byte(certtesting.SignerTest01Key), 0o600)
 	require.NoError(t, err)
 
-	// Create majordomo fetcher with file confidant
-	fetcher, err := majordomo.New(ctx,
-		majordomo.WithMajordomo(newMajordomo(t)),
-	)
-	require.NoError(t, err)
-
-	// Create service
+	// Create service with majordomo file confidant
 	svc, err := standard.New(ctx,
-		standard.WithFetcher(fetcher),
+		standard.WithMajordomo(newMajordomo(t)),
 		standard.WithCertPEMURI("file://"+certPath),
 		standard.WithCertKeyURI("file://"+keyPath),
 	)
@@ -287,21 +275,21 @@ func TestConcurrentReload(t *testing.T) {
 func TestReloadTimeout(t *testing.T) {
 	ctx := context.Background()
 
-	fetcher := mock.NewFetcher(map[string][]byte{
+	majordomoSvc := mock.NewMajordomo(map[string][]byte{
 		"cert.pem": []byte(certtesting.SignerTest01Crt),
 		"cert.key": []byte(certtesting.SignerTest01Key),
 	})
 
 	// Create service with very short timeout
 	svc, err := standard.New(ctx,
-		standard.WithFetcher(fetcher),
+		standard.WithMajordomo(majordomoSvc),
 		standard.WithCertPEMURI("cert.pem"),
 		standard.WithCertKeyURI("cert.key"),
 		standard.WithReloadTimeout(1*time.Millisecond),
 	)
 	require.NoError(t, err)
 
-	// Reload should complete even with short timeout (mock fetcher is instant)
+	// Reload should complete even with short timeout (mock is instant)
 	svc.ReloadCertificate(ctx)
 
 	cert, err := svc.GetCertificate(nil)
@@ -312,13 +300,13 @@ func TestReloadTimeout(t *testing.T) {
 func TestGetTLSConfig(t *testing.T) {
 	ctx := context.Background()
 
-	fetcher := mock.NewFetcher(map[string][]byte{
+	majordomoSvc := mock.NewMajordomo(map[string][]byte{
 		"cert.pem": []byte(certtesting.SignerTest01Crt),
 		"cert.key": []byte(certtesting.SignerTest01Key),
 	})
 
 	svc, err := standard.New(ctx,
-		standard.WithFetcher(fetcher),
+		standard.WithMajordomo(majordomoSvc),
 		standard.WithCertPEMURI("cert.pem"),
 		standard.WithCertKeyURI("cert.key"),
 	)
@@ -340,13 +328,13 @@ func TestGetTLSConfig(t *testing.T) {
 func TestGetClientTLSConfig(t *testing.T) {
 	ctx := context.Background()
 
-	fetcher := mock.NewFetcher(map[string][]byte{
+	majordomoSvc := mock.NewMajordomo(map[string][]byte{
 		"cert.pem": []byte(certtesting.SignerTest01Crt),
 		"cert.key": []byte(certtesting.SignerTest01Key),
 	})
 
 	svc, err := standard.New(ctx,
-		standard.WithFetcher(fetcher),
+		standard.WithMajordomo(majordomoSvc),
 		standard.WithCertPEMURI("cert.pem"),
 		standard.WithCertKeyURI("cert.key"),
 	)
@@ -374,11 +362,11 @@ func TestGetClientTLSConfig(t *testing.T) {
 func TestGetClientTLSConfigWithExpiredCert(t *testing.T) {
 	ctx := context.Background()
 
-	// Create a mock fetcher that simulates certificate expiry and auto-reload.
+	// Create a dynamic mock that simulates certificate expiry and auto-reload.
 	// Initial fetch returns expired cert, subsequent fetches return valid cert.
 	var certFetchCount, keyFetchCount int
 	var mu sync.Mutex
-	dynamicFetcher := &dynamicMockFetcher{
+	dynamicMajordomo := &dynamicMockMajordomo{
 		fetchFunc: func(ctx context.Context, uri string) ([]byte, error) {
 			mu.Lock()
 			defer mu.Unlock()
@@ -405,7 +393,7 @@ func TestGetClientTLSConfigWithExpiredCert(t *testing.T) {
 	// Create service with expired certificate
 	// Note: New() will log a warning but still load the expired cert
 	svc, err := standard.New(ctx,
-		standard.WithFetcher(dynamicFetcher),
+		standard.WithMajordomo(dynamicMajordomo),
 		standard.WithCertPEMURI("cert.pem"),
 		standard.WithCertKeyURI("cert.key"),
 	)
@@ -438,11 +426,11 @@ func TestGetClientTLSConfigWithExpiredCert(t *testing.T) {
 func TestGetCertificateWithExpiredCert(t *testing.T) {
 	ctx := context.Background()
 
-	// Create a mock fetcher that simulates certificate expiry and auto-reload.
+	// Create a dynamic mock that simulates certificate expiry and auto-reload.
 	// Initial fetch returns expired cert, subsequent fetches return valid cert.
 	var certFetchCount, keyFetchCount int
 	var mu sync.Mutex
-	dynamicFetcher := &dynamicMockFetcher{
+	dynamicMajordomo := &dynamicMockMajordomo{
 		fetchFunc: func(_ context.Context, uri string) ([]byte, error) {
 			mu.Lock()
 			defer mu.Unlock()
@@ -468,7 +456,7 @@ func TestGetCertificateWithExpiredCert(t *testing.T) {
 	// Create service with expired certificate.
 	// New() will log a warning but still load the expired cert.
 	svc, err := standard.New(ctx,
-		standard.WithFetcher(dynamicFetcher),
+		standard.WithMajordomo(dynamicMajordomo),
 		standard.WithCertPEMURI("cert.pem"),
 		standard.WithCertKeyURI("cert.key"),
 	)
@@ -498,13 +486,15 @@ func TestGetCertificateWithExpiredCert(t *testing.T) {
 	mu.Unlock()
 }
 
-// dynamicMockFetcher is a test helper that allows dynamic fetch behavior
-type dynamicMockFetcher struct {
+// dynamicMockMajordomo is a test helper that allows dynamic fetch behavior.
+var _ majordomo.Service = (*dynamicMockMajordomo)(nil)
+
+type dynamicMockMajordomo struct {
 	fetchFunc func(ctx context.Context, uri string) ([]byte, error)
 }
 
-func (f *dynamicMockFetcher) Fetch(ctx context.Context, uri string) ([]byte, error) {
-	return f.fetchFunc(ctx, uri)
+func (m *dynamicMockMajordomo) Fetch(ctx context.Context, uri string) ([]byte, error) {
+	return m.fetchFunc(ctx, uri)
 }
 
 func TestReloadWithInvalidCertificate(t *testing.T) {
@@ -521,15 +511,9 @@ func TestReloadWithInvalidCertificate(t *testing.T) {
 	err = os.WriteFile(keyPath, []byte(certtesting.SignerTest01Key), 0o600)
 	require.NoError(t, err)
 
-	// Create majordomo fetcher with file confidant
-	fetcher, err := majordomo.New(ctx,
-		majordomo.WithMajordomo(newMajordomo(t)),
-	)
-	require.NoError(t, err)
-
-	// Create service
+	// Create service with majordomo file confidant
 	svc, err := standard.New(ctx,
-		standard.WithFetcher(fetcher),
+		standard.WithMajordomo(newMajordomo(t)),
 		standard.WithCertPEMURI("file://"+certPath),
 		standard.WithCertKeyURI("file://"+keyPath),
 	)
@@ -568,15 +552,9 @@ func TestReloadWithMismatchedKeyPair(t *testing.T) {
 	err = os.WriteFile(keyPath, []byte(certtesting.SignerTest01Key), 0o600)
 	require.NoError(t, err)
 
-	// Create majordomo fetcher with file confidant
-	fetcher, err := majordomo.New(ctx,
-		majordomo.WithMajordomo(newMajordomo(t)),
-	)
-	require.NoError(t, err)
-
-	// Create service
+	// Create service with majordomo file confidant
 	svc, err := standard.New(ctx,
-		standard.WithFetcher(fetcher),
+		standard.WithMajordomo(newMajordomo(t)),
 		standard.WithCertPEMURI("file://"+certPath),
 		standard.WithCertKeyURI("file://"+keyPath),
 	)
@@ -608,17 +586,17 @@ func TestNewSentinelErrors(t *testing.T) {
 		sentinel error
 	}{
 		{
-			name: "NoFetcher",
+			name: "NoMajordomo",
 			params: []standard.Parameter{
 				standard.WithCertPEMURI("cert.pem"),
 				standard.WithCertKeyURI("cert.key"),
 			},
-			sentinel: certmanager.ErrNoFetcher,
+			sentinel: certmanager.ErrNoMajordomo,
 		},
 		{
 			name: "NoCertPEMURI",
 			params: []standard.Parameter{
-				standard.WithFetcher(mock.NewFetcher(map[string][]byte{
+				standard.WithMajordomo(mock.NewMajordomo(map[string][]byte{
 					"cert.pem": []byte("dummy"),
 					"cert.key": []byte("dummy"),
 				})),
@@ -629,7 +607,7 @@ func TestNewSentinelErrors(t *testing.T) {
 		{
 			name: "NoCertKeyURI",
 			params: []standard.Parameter{
-				standard.WithFetcher(mock.NewFetcher(map[string][]byte{
+				standard.WithMajordomo(mock.NewMajordomo(map[string][]byte{
 					"cert.pem": []byte("dummy"),
 					"cert.key": []byte("dummy"),
 				})),

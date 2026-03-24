@@ -15,13 +15,13 @@ package standard
 
 import (
 	certmanager "github.com/attestantio/go-certmanager"
-	"github.com/attestantio/go-certmanager/fetcher"
 	"github.com/rs/zerolog"
+	"github.com/wealdtech/go-majordomo"
 )
 
 type parameters struct {
 	logLevel   zerolog.Level
-	fetcher    fetcher.Fetcher
+	majordomo  majordomo.Service
 	certPEMURI string
 	certKeyURI string
 	caCertURI  string // Optional.
@@ -45,10 +45,10 @@ func WithLogLevel(logLevel zerolog.Level) Parameter {
 	})
 }
 
-// WithFetcher sets the certificate fetcher for this module.
-func WithFetcher(fetcher fetcher.Fetcher) Parameter {
+// WithMajordomo sets the majordomo service for this module.
+func WithMajordomo(service majordomo.Service) Parameter {
 	return parameterFunc(func(p *parameters) {
-		p.fetcher = fetcher
+		p.majordomo = service
 	})
 }
 
@@ -74,6 +74,7 @@ func WithCACertURI(caCertURI string) Parameter {
 	})
 }
 
+// parseAndCheckParameters parses and checks parameters to ensure that mandatory parameters are present and correct.
 func parseAndCheckParameters(params ...Parameter) (*parameters, error) {
 	parameters := parameters{
 		logLevel: zerolog.GlobalLevel(),
@@ -84,8 +85,8 @@ func parseAndCheckParameters(params ...Parameter) (*parameters, error) {
 		}
 	}
 
-	if parameters.fetcher == nil {
-		return nil, certmanager.ErrNoFetcher
+	if parameters.majordomo == nil {
+		return nil, certmanager.ErrNoMajordomo
 	}
 	if parameters.certPEMURI == "" {
 		return nil, certmanager.ErrNoCertPEMURI

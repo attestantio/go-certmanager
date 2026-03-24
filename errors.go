@@ -16,8 +16,8 @@ package certmanager
 import "errors"
 
 var (
-	// ErrNoFetcher is returned when no fetcher is specified.
-	ErrNoFetcher = errors.New("no fetcher specified")
+	// ErrNoMajordomo is returned when no majordomo is specified.
+	ErrNoMajordomo = errors.New("no majordomo specified")
 
 	// ErrNoCertPEMURI is returned when no certificate PEM URI is specified.
 	ErrNoCertPEMURI = errors.New("no cert PEM URI specified")

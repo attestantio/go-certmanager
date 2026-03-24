@@ -23,7 +23,6 @@ import (
 
 	certmanager "github.com/attestantio/go-certmanager"
 	"github.com/attestantio/go-certmanager/client/standard"
-	"github.com/attestantio/go-certmanager/fetcher/majordomo"
 	certtesting "github.com/attestantio/go-certmanager/testing"
 	"github.com/attestantio/go-certmanager/testing/mock"
 	"github.com/stretchr/testify/require"
@@ -60,12 +59,12 @@ func TestNew(t *testing.T) {
 			name: "Success",
 			params: func(t *testing.T) []standard.Parameter {
 				t.Helper()
-				fetcher := mock.NewFetcher(map[string][]byte{
+				majordomoSvc := mock.NewMajordomo(map[string][]byte{
 					"cert.pem": []byte(certtesting.ClientTest01Crt),
 					"cert.key": []byte(certtesting.ClientTest01Key),
 				})
 				return []standard.Parameter{
-					standard.WithFetcher(fetcher),
+					standard.WithMajordomo(majordomoSvc),
 					standard.WithCertPEMURI("cert.pem"),
 					standard.WithCertKeyURI("cert.key"),
 				}
@@ -76,13 +75,13 @@ func TestNew(t *testing.T) {
 			name: "SuccessWithCA",
 			params: func(t *testing.T) []standard.Parameter {
 				t.Helper()
-				fetcher := mock.NewFetcher(map[string][]byte{
+				majordomoSvc := mock.NewMajordomo(map[string][]byte{
 					"cert.pem": []byte(certtesting.ClientTest01Crt),
 					"cert.key": []byte(certtesting.ClientTest01Key),
 					"ca.pem":   []byte(certtesting.CACrt),
 				})
 				return []standard.Parameter{
-					standard.WithFetcher(fetcher),
+					standard.WithMajordomo(majordomoSvc),
 					standard.WithCertPEMURI("cert.pem"),
 					standard.WithCertKeyURI("cert.key"),
 					standard.WithCACertURI("ca.pem"),
@@ -91,7 +90,7 @@ func TestNew(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "NoFetcher",
+			name: "NoMajordomo",
 			params: func(t *testing.T) []standard.Parameter {
 				t.Helper()
 				return []standard.Parameter{
@@ -105,9 +104,9 @@ func TestNew(t *testing.T) {
 			name: "NoCertPEMURI",
 			params: func(t *testing.T) []standard.Parameter {
 				t.Helper()
-				fetcher := mock.NewFetcher(map[string][]byte{})
+				majordomoSvc := mock.NewMajordomo(map[string][]byte{})
 				return []standard.Parameter{
-					standard.WithFetcher(fetcher),
+					standard.WithMajordomo(majordomoSvc),
 					standard.WithCertKeyURI("cert.key"),
 				}
 			},
@@ -117,9 +116,9 @@ func TestNew(t *testing.T) {
 			name: "NoCertKeyURI",
 			params: func(t *testing.T) []standard.Parameter {
 				t.Helper()
-				fetcher := mock.NewFetcher(map[string][]byte{})
+				majordomoSvc := mock.NewMajordomo(map[string][]byte{})
 				return []standard.Parameter{
-					standard.WithFetcher(fetcher),
+					standard.WithMajordomo(majordomoSvc),
 					standard.WithCertPEMURI("cert.pem"),
 				}
 			},
@@ -130,8 +129,10 @@ func TestNew(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := standard.New(ctx, tt.params(t)...)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("New() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
 			}
 		})
 	}
@@ -149,12 +150,12 @@ func TestGetCertificatePair(t *testing.T) {
 			name: "Success",
 			setup: func(t *testing.T) *standard.Service {
 				t.Helper()
-				fetcher := mock.NewFetcher(map[string][]byte{
+				majordomoSvc := mock.NewMajordomo(map[string][]byte{
 					"cert.pem": []byte(certtesting.ClientTest01Crt),
 					"cert.key": []byte(certtesting.ClientTest01Key),
 				})
 				svc, err := standard.New(ctx,
-					standard.WithFetcher(fetcher),
+					standard.WithMajordomo(majordomoSvc),
 					standard.WithCertPEMURI("cert.pem"),
 					standard.WithCertKeyURI("cert.key"),
 				)
@@ -167,12 +168,12 @@ func TestGetCertificatePair(t *testing.T) {
 			name: "InvalidCertificate",
 			setup: func(t *testing.T) *standard.Service {
 				t.Helper()
-				fetcher := mock.NewFetcher(map[string][]byte{
+				majordomoSvc := mock.NewMajordomo(map[string][]byte{
 					"cert.pem": []byte("invalid"),
 					"cert.key": []byte("invalid"),
 				})
 				svc, err := standard.New(ctx,
-					standard.WithFetcher(fetcher),
+					standard.WithMajordomo(majordomoSvc),
 					standard.WithCertPEMURI("cert.pem"),
 					standard.WithCertKeyURI("cert.key"),
 				)
@@ -185,12 +186,12 @@ func TestGetCertificatePair(t *testing.T) {
 			name: "MismatchedKeyPair",
 			setup: func(t *testing.T) *standard.Service {
 				t.Helper()
-				fetcher := mock.NewFetcher(map[string][]byte{
+				majordomoSvc := mock.NewMajordomo(map[string][]byte{
 					"cert.pem": []byte(certtesting.ClientTest01Crt),
 					"cert.key": []byte(certtesting.ClientTest02Key), // Mismatched key
 				})
 				svc, err := standard.New(ctx,
-					standard.WithFetcher(fetcher),
+					standard.WithMajordomo(majordomoSvc),
 					standard.WithCertPEMURI("cert.pem"),
 					standard.WithCertKeyURI("cert.key"),
 				)
@@ -200,12 +201,12 @@ func TestGetCertificatePair(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "FetcherError",
+			name: "FetchError",
 			setup: func(t *testing.T) *standard.Service {
 				t.Helper()
-				fetcher := mock.NewFetcherWithError(os.ErrNotExist)
+				majordomoSvc := mock.NewMajordomoWithError(os.ErrNotExist)
 				svc, err := standard.New(ctx,
-					standard.WithFetcher(fetcher),
+					standard.WithMajordomo(majordomoSvc),
 					standard.WithCertPEMURI("cert.pem"),
 					standard.WithCertKeyURI("cert.key"),
 				)
@@ -220,14 +221,13 @@ func TestGetCertificatePair(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			svc := tt.setup(t)
 			cert, err := svc.GetCertificatePair(ctx)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("GetCertificatePair() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.wantErr {
+				require.Error(t, err)
 				return
 			}
-			if !tt.wantErr {
-				require.NotNil(t, cert)
-				require.NotEmpty(t, cert.Certificate)
-			}
+			require.NoError(t, err)
+			require.NotNil(t, cert)
+			require.NotEmpty(t, cert.Certificate)
 		})
 	}
 }
@@ -245,12 +245,12 @@ func TestGetTLSConfig(t *testing.T) {
 			name: "WithoutCA",
 			setup: func(t *testing.T) *standard.Service {
 				t.Helper()
-				fetcher := mock.NewFetcher(map[string][]byte{
+				majordomoSvc := mock.NewMajordomo(map[string][]byte{
 					"cert.pem": []byte(certtesting.ClientTest01Crt),
 					"cert.key": []byte(certtesting.ClientTest01Key),
 				})
 				svc, err := standard.New(ctx,
-					standard.WithFetcher(fetcher),
+					standard.WithMajordomo(majordomoSvc),
 					standard.WithCertPEMURI("cert.pem"),
 					standard.WithCertKeyURI("cert.key"),
 				)
@@ -270,13 +270,13 @@ func TestGetTLSConfig(t *testing.T) {
 			name: "WithCA",
 			setup: func(t *testing.T) *standard.Service {
 				t.Helper()
-				fetcher := mock.NewFetcher(map[string][]byte{
+				majordomoSvc := mock.NewMajordomo(map[string][]byte{
 					"cert.pem": []byte(certtesting.ClientTest01Crt),
 					"cert.key": []byte(certtesting.ClientTest01Key),
 					"ca.pem":   []byte(certtesting.CACrt),
 				})
 				svc, err := standard.New(ctx,
-					standard.WithFetcher(fetcher),
+					standard.WithMajordomo(majordomoSvc),
 					standard.WithCertPEMURI("cert.pem"),
 					standard.WithCertKeyURI("cert.key"),
 					standard.WithCACertURI("ca.pem"),
@@ -297,13 +297,13 @@ func TestGetTLSConfig(t *testing.T) {
 			name: "InvalidCA",
 			setup: func(t *testing.T) *standard.Service {
 				t.Helper()
-				fetcher := mock.NewFetcher(map[string][]byte{
+				majordomoSvc := mock.NewMajordomo(map[string][]byte{
 					"cert.pem": []byte(certtesting.ClientTest01Crt),
 					"cert.key": []byte(certtesting.ClientTest01Key),
 					"ca.pem":   []byte("invalid CA"),
 				})
 				svc, err := standard.New(ctx,
-					standard.WithFetcher(fetcher),
+					standard.WithMajordomo(majordomoSvc),
 					standard.WithCertPEMURI("cert.pem"),
 					standard.WithCertKeyURI("cert.key"),
 					standard.WithCACertURI("ca.pem"),
@@ -317,15 +317,15 @@ func TestGetTLSConfig(t *testing.T) {
 			name: "CAFetchError",
 			setup: func(t *testing.T) *standard.Service {
 				t.Helper()
-				// Fetcher with cert/key but CA fetch will fail
+				// Majordomo with cert/key but CA fetch will fail
 				data := map[string][]byte{
 					"cert.pem": []byte(certtesting.ClientTest01Crt),
 					"cert.key": []byte(certtesting.ClientTest01Key),
 					// "ca.pem" intentionally missing
 				}
-				fetcher := mock.NewFetcher(data)
+				majordomoSvc := mock.NewMajordomo(data)
 				svc, err := standard.New(ctx,
-					standard.WithFetcher(fetcher),
+					standard.WithMajordomo(majordomoSvc),
 					standard.WithCertPEMURI("cert.pem"),
 					standard.WithCertKeyURI("cert.key"),
 					standard.WithCACertURI("ca.pem"),
@@ -341,11 +341,12 @@ func TestGetTLSConfig(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			svc := tt.setup(t)
 			cfg, err := svc.GetTLSConfig(ctx)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("GetTLSConfig() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.wantErr {
+				require.Error(t, err)
 				return
 			}
-			if !tt.wantErr && tt.checkFunc != nil {
+			require.NoError(t, err)
+			if tt.checkFunc != nil {
 				tt.checkFunc(t, cfg)
 			}
 		})
@@ -355,13 +356,13 @@ func TestGetTLSConfig(t *testing.T) {
 func TestGetTLSConfigVerifiesCertificate(t *testing.T) {
 	ctx := context.Background()
 
-	fetcher := mock.NewFetcher(map[string][]byte{
+	majordomoSvc := mock.NewMajordomo(map[string][]byte{
 		"cert.pem": []byte(certtesting.ClientTest01Crt),
 		"cert.key": []byte(certtesting.ClientTest01Key),
 	})
 
 	svc, err := standard.New(ctx,
-		standard.WithFetcher(fetcher),
+		standard.WithMajordomo(majordomoSvc),
 		standard.WithCertPEMURI("cert.pem"),
 		standard.WithCertKeyURI("cert.key"),
 	)
@@ -396,15 +397,9 @@ func TestWithFilesystem(t *testing.T) {
 	err = os.WriteFile(caPath, []byte(certtesting.CACrt), 0o600)
 	require.NoError(t, err)
 
-	// Create majordomo fetcher with file confidant
-	fetcher, err := majordomo.New(ctx,
-		majordomo.WithMajordomo(newMajordomo(t)),
-	)
-	require.NoError(t, err)
-
-	// Create service using file:// URIs
+	// Create service using majordomo with file confidant
 	svc, err := standard.New(ctx,
-		standard.WithFetcher(fetcher),
+		standard.WithMajordomo(newMajordomo(t)),
 		standard.WithCertPEMURI("file://"+certPath),
 		standard.WithCertKeyURI("file://"+keyPath),
 		standard.WithCACertURI("file://"+caPath),
@@ -435,17 +430,17 @@ func TestNewSentinelErrors(t *testing.T) {
 		sentinel error
 	}{
 		{
-			name: "NoFetcher",
+			name: "NoMajordomo",
 			params: []standard.Parameter{
 				standard.WithCertPEMURI("cert.pem"),
 				standard.WithCertKeyURI("cert.key"),
 			},
-			sentinel: certmanager.ErrNoFetcher,
+			sentinel: certmanager.ErrNoMajordomo,
 		},
 		{
 			name: "NoCertPEMURI",
 			params: []standard.Parameter{
-				standard.WithFetcher(mock.NewFetcher(nil)),
+				standard.WithMajordomo(mock.NewMajordomo(nil)),
 				standard.WithCertKeyURI("cert.key"),
 			},
 			sentinel: certmanager.ErrNoCertPEMURI,
@@ -453,7 +448,7 @@ func TestNewSentinelErrors(t *testing.T) {
 		{
 			name: "NoCertKeyURI",
 			params: []standard.Parameter{
-				standard.WithFetcher(mock.NewFetcher(nil)),
+				standard.WithMajordomo(mock.NewMajordomo(nil)),
 				standard.WithCertPEMURI("cert.pem"),
 			},
 			sentinel: certmanager.ErrNoCertKeyURI,
@@ -472,13 +467,13 @@ func TestNewSentinelErrors(t *testing.T) {
 func TestMultipleGetTLSConfigCalls(t *testing.T) {
 	ctx := context.Background()
 
-	fetcher := mock.NewFetcher(map[string][]byte{
+	majordomoSvc := mock.NewMajordomo(map[string][]byte{
 		"cert.pem": []byte(certtesting.ClientTest01Crt),
 		"cert.key": []byte(certtesting.ClientTest01Key),
 	})
 
 	svc, err := standard.New(ctx,
-		standard.WithFetcher(fetcher),
+		standard.WithMajordomo(majordomoSvc),
 		standard.WithCertPEMURI("cert.pem"),
 		standard.WithCertKeyURI("cert.key"),
 	)
