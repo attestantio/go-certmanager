@@ -83,13 +83,12 @@ func New(ctx context.Context, params ...Parameter) (*Service, error) {
 
 // ReloadCertificate attempts to reload the certificate from its source.
 // This is thread-safe and non-blocking. If a reload is already in progress,
-// this method returns nil immediately without waiting.
+// this method returns ErrReloadInProgress immediately without waiting.
 // Returns an error if the reload fails (e.g., certificate fetch or parse error).
 func (s *Service) ReloadCertificate(ctx context.Context) error {
 	if !s.currentCertMutex.TryLock() {
-		// Certificate is already being reloaded; do nothing.
 		s.log.Debug().Msg("Certificate is already being reloaded; ReloadCertificate will do nothing")
-		return nil
+		return certmanager.ErrReloadInProgress
 	}
 	defer s.currentCertMutex.Unlock()
 
@@ -145,7 +144,7 @@ func (s *Service) loadCertificate(ctx context.Context) error {
 	if s.loadTimeout > 0 {
 		var cancel context.CancelFunc
 		// Give up on the load if it takes longer than the load timeout.
-		ctx, cancel = context.WithDeadline(ctx, time.Now().Add(s.loadTimeout))
+		ctx, cancel = context.WithTimeout(ctx, s.loadTimeout)
 		defer cancel()
 	}
 

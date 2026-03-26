@@ -28,7 +28,7 @@ type Service interface {
 
 	// ReloadCertificate attempts to reload the certificate from its source.
 	// This is thread-safe and non-blocking. If a reload is already in progress,
-	// this method returns nil immediately without waiting.
+	// this method returns ErrReloadInProgress immediately without waiting.
 	// Returns an error if the reload fails (e.g., certificate fetch or parse error).
 	// Typically called in response to SIGHUP or expiry detection.
 	ReloadCertificate(ctx context.Context) error

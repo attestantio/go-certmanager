@@ -39,4 +39,7 @@ var (
 
 	// ErrExpiredCertificate is returned when the certificate has expired.
 	ErrExpiredCertificate = errors.New("certificate has expired")
+
+	// ErrReloadInProgress is returned when a certificate reload is already in progress.
+	ErrReloadInProgress = errors.New("certificate reload already in progress")
 )

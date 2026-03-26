@@ -51,7 +51,7 @@ func New(ctx context.Context, params ...Parameter) (*Service, error) {
 	if parameters.loadTimeout > 0 {
 		var cancel context.CancelFunc
 		// Give up on the load if it takes longer than the load timeout.
-		ctx, cancel = context.WithDeadline(ctx, time.Now().Add(parameters.loadTimeout))
+		ctx, cancel = context.WithTimeout(ctx, parameters.loadTimeout)
 		defer cancel()
 	}
 

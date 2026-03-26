@@ -15,7 +15,7 @@
 // server and client TLS configurations.
 //
 // The library supports:
-//   - Server certificate loading with automatic reload on expiry or SIGHUP signal
+//   - Server certificate loading with manual reload via ReloadCertificate (e.g., on SIGHUP)
 //   - Client certificate loading for gRPC and TLS connections
 //   - DNS-based SAN identity extraction with CN fallback (RFC 1123/6125)
 //   - Flexible certificate fetching via majordomo service
@@ -24,7 +24,7 @@
 // Server Certificate Management:
 //
 // The server package provides certificate management for TLS servers with
-// automatic reloading capabilities. Use this for long-running services that
+// manual reloading capabilities. Use this for long-running services that
 // need to reload certificates without restarting.
 //
 //	import servercert "github.com/attestantio/go-certmanager/server/standard"
