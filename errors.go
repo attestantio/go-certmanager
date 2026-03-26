@@ -36,4 +36,7 @@ var (
 
 	// ErrNoCertificateLoaded is returned when no certificate has been loaded.
 	ErrNoCertificateLoaded = errors.New("no certificate loaded")
+
+	// ErrExpiredCertificate is returned when the certificate has expired.
+	ErrExpiredCertificate = errors.New("certificate has expired")
 )

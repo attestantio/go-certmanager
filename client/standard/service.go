@@ -18,9 +18,11 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"time"
 
 	certmanager "github.com/attestantio/go-certmanager"
 	"github.com/attestantio/go-certmanager/client"
+	"github.com/attestantio/go-certmanager/san"
 	"github.com/rs/zerolog"
 	zerologger "github.com/rs/zerolog/log"
 	"github.com/wealdtech/go-majordomo"
@@ -28,11 +30,10 @@ import (
 
 // Service is the standard client certificate manager implementation.
 type Service struct {
-	log        zerolog.Logger
-	majordomo  majordomo.Service
-	certPEMURI string
-	certKeyURI string
-	caCertURI  string
+	log       zerolog.Logger
+	majordomo majordomo.Service
+	caCertURI string
+	certPair  *tls.Certificate
 }
 
 var _ client.Service = (*Service)(nil)
@@ -49,45 +50,57 @@ func New(ctx context.Context, params ...Parameter) (*Service, error) {
 		log = log.Level(parameters.logLevel)
 	}
 
-	return &Service{
-		log:        log,
-		majordomo:  parameters.majordomo,
-		certPEMURI: parameters.certPEMURI,
-		certKeyURI: parameters.certKeyURI,
-		caCertURI:  parameters.caCertURI,
-	}, nil
-}
-
-// GetCertificatePair fetches the certificate and key via majordomo and returns a TLS certificate pair.
-func (s *Service) GetCertificatePair(ctx context.Context) (*tls.Certificate, error) {
-	clientCert, err := s.majordomo.Fetch(ctx, s.certPEMURI)
+	// Validate the certificate at startup.
+	certPEMBlock, err := parameters.majordomo.Fetch(ctx, parameters.certPEMURI)
 	if err != nil {
 		return nil, fmt.Errorf("failed to obtain client certificate: %w", err)
 	}
-	clientKey, err := s.majordomo.Fetch(ctx, s.certKeyURI)
+	certKeyBlock, err := parameters.majordomo.Fetch(ctx, parameters.certKeyURI)
 	if err != nil {
 		return nil, fmt.Errorf("failed to obtain client key: %w", err)
 	}
 
-	clientPair, err := tls.X509KeyPair(clientCert, clientKey)
+	clientPair, err := tls.X509KeyPair(certPEMBlock, certKeyBlock)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load client keypair: %w", err)
 	}
+	if len(clientPair.Certificate) == 0 {
+		return nil, certmanager.ErrEmptyCertificate
+	}
+	cert, err := x509.ParseCertificate(clientPair.Certificate[0])
+	if err != nil || cert == nil {
+		return nil, fmt.Errorf("failed to parse client certificate: %w", err)
+	}
+	if cert.NotAfter.Before(time.Now()) {
+		log.Error().Time("expiry", cert.NotAfter).Msg("Client certificate expired")
+		return nil, certmanager.ErrExpiredCertificate
+	}
 
-	return &clientPair, nil
+	log.Info().
+		Str("identity", certIdentity(cert)).
+		Str("issued_by", cert.Issuer.CommonName).
+		Time("valid_until", cert.NotAfter).
+		Msg("Client certificate loaded")
+
+	return &Service{
+		log:       log,
+		majordomo: parameters.majordomo,
+		caCertURI: parameters.caCertURI,
+		certPair:  &clientPair,
+	}, nil
+}
+
+// GetCertificatePair returns the cached TLS certificate pair.
+func (s *Service) GetCertificatePair(_ context.Context) (*tls.Certificate, error) {
+	return s.certPair, nil
 }
 
 // GetTLSConfig returns a TLS configuration for client use.
 // The returned config includes the client certificate pair and minimum TLS version.
 // If a CA certificate URI is configured, it is used to create a custom root CA pool.
 func (s *Service) GetTLSConfig(ctx context.Context) (*tls.Config, error) {
-	clientPair, err := s.GetCertificatePair(ctx)
-	if err != nil {
-		return nil, err
-	}
-
 	tlsCfg := &tls.Config{
-		Certificates: []tls.Certificate{*clientPair},
+		Certificates: []tls.Certificate{*s.certPair},
 		MinVersion:   tls.VersionTLS13,
 	}
 
@@ -105,4 +118,11 @@ func (s *Service) GetTLSConfig(ctx context.Context) (*tls.Config, error) {
 	}
 
 	return tlsCfg, nil
+}
+
+// certIdentity returns the primary identity from a certificate
+// using the san package's validated extraction logic.
+func certIdentity(cert *x509.Certificate) string {
+	identity, _ := san.ExtractIdentity(cert)
+	return identity
 }

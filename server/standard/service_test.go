@@ -28,7 +28,6 @@ import (
 	certtesting "github.com/attestantio/go-certmanager/testing"
 	"github.com/attestantio/go-certmanager/testing/mock"
 	"github.com/stretchr/testify/require"
-	"github.com/wealdtech/go-majordomo"
 	fileconfidant "github.com/wealdtech/go-majordomo/confidants/file"
 	majordomostandard "github.com/wealdtech/go-majordomo/standard"
 )
@@ -361,144 +360,6 @@ func TestGetClientTLSConfig(t *testing.T) {
 	require.NotNil(t, x509Cert)
 }
 
-func TestGetClientTLSConfigWithExpiredCert(t *testing.T) {
-	ctx := context.Background()
-
-	// Create a dynamic mock that simulates certificate expiry and auto-reload.
-	// Initial fetch returns expired cert, subsequent fetches return valid cert.
-	var certFetchCount, keyFetchCount int
-	var mu sync.Mutex
-	dynamicMajordomo := &dynamicMockMajordomo{
-		fetchFunc: func(ctx context.Context, uri string) ([]byte, error) {
-			mu.Lock()
-			defer mu.Unlock()
-
-			if uri == "cert.pem" {
-				certFetchCount++
-				if certFetchCount == 1 {
-					// First fetch (during New()): return expired certificate
-					// This simulates a certificate that expired before service startup
-					return []byte(certtesting.ExpiredCrt), nil
-				}
-				// Subsequent fetches: return valid certificate (reload succeeds)
-				return []byte(certtesting.SignerTest01Crt), nil
-			}
-			// Keys - must match the cert
-			keyFetchCount++
-			if keyFetchCount == 1 {
-				return []byte(certtesting.ExpiredKey), nil
-			}
-			return []byte(certtesting.SignerTest01Key), nil
-		},
-	}
-
-	// Create service with expired certificate
-	// Note: New() will log a warning but still load the expired cert
-	svc, err := standard.New(ctx,
-		standard.WithMajordomo(dynamicMajordomo),
-		standard.WithCertPEMURI("cert.pem"),
-		standard.WithCertKeyURI("cert.key"),
-	)
-	require.NoError(t, err)
-
-	// Call GetClientTLSConfig() - this should:
-	// 1. Detect the certificate is expired
-	// 2. Automatically trigger ReloadCertificate()
-	// 3. Return the newly reloaded valid certificate
-	tlsCfg, err := svc.GetClientTLSConfig(ctx)
-	require.NoError(t, err)
-	require.NotNil(t, tlsCfg)
-	require.Len(t, tlsCfg.Certificates, 1)
-
-	// Parse the certificate
-	x509Cert, err := x509.ParseCertificate(tlsCfg.Certificates[0].Certificate[0])
-	require.NoError(t, err)
-
-	// Verify we got the reloaded valid certificate (NOT the expired one)
-	require.Equal(t, "signer-test01", x509Cert.Subject.CommonName)
-	require.True(t, x509Cert.NotAfter.After(time.Now()), "Certificate should not be expired")
-
-	// Verify that multiple fetches occurred (initial + reload)
-	mu.Lock()
-	require.Equal(t, 2, certFetchCount, "Should have fetched cert twice (initial + reload)")
-	require.Equal(t, 2, keyFetchCount, "Should have fetched key twice (initial + reload)")
-	mu.Unlock()
-}
-
-func TestGetCertificateWithExpiredCert(t *testing.T) {
-	ctx := context.Background()
-
-	// Create a dynamic mock that simulates certificate expiry and auto-reload.
-	// Initial fetch returns expired cert, subsequent fetches return valid cert.
-	var certFetchCount, keyFetchCount int
-	var mu sync.Mutex
-	dynamicMajordomo := &dynamicMockMajordomo{
-		fetchFunc: func(_ context.Context, uri string) ([]byte, error) {
-			mu.Lock()
-			defer mu.Unlock()
-
-			if uri == "cert.pem" {
-				certFetchCount++
-				if certFetchCount == 1 {
-					// First fetch (during New()): return expired certificate
-					return []byte(certtesting.ExpiredCrt), nil
-				}
-				// Subsequent fetches: return valid certificate (reload succeeds)
-				return []byte(certtesting.SignerTest01Crt), nil
-			}
-			// Keys - must match the cert
-			keyFetchCount++
-			if keyFetchCount == 1 {
-				return []byte(certtesting.ExpiredKey), nil
-			}
-			return []byte(certtesting.SignerTest01Key), nil
-		},
-	}
-
-	// Create service with expired certificate.
-	// New() will log a warning but still load the expired cert.
-	svc, err := standard.New(ctx,
-		standard.WithMajordomo(dynamicMajordomo),
-		standard.WithCertPEMURI("cert.pem"),
-		standard.WithCertKeyURI("cert.key"),
-	)
-	require.NoError(t, err)
-
-	// Call GetCertificate() - this should:
-	// 1. Detect the certificate is expired
-	// 2. Automatically trigger ReloadCertificate()
-	// 3. Return the newly reloaded valid certificate (not the stale expired one)
-	cert, err := svc.GetCertificate(nil)
-	require.NoError(t, err)
-	require.NotNil(t, cert)
-	require.NotEmpty(t, cert.Certificate)
-
-	// Parse the returned certificate.
-	x509Cert, err := x509.ParseCertificate(cert.Certificate[0])
-	require.NoError(t, err)
-
-	// Verify we got the reloaded valid certificate (NOT the expired one).
-	require.Equal(t, "signer-test01", x509Cert.Subject.CommonName)
-	require.True(t, x509Cert.NotAfter.After(time.Now()), "Certificate should not be expired")
-
-	// Verify that multiple fetches occurred (initial + reload).
-	mu.Lock()
-	require.Equal(t, 2, certFetchCount, "Should have fetched cert twice (initial + reload)")
-	require.Equal(t, 2, keyFetchCount, "Should have fetched key twice (initial + reload)")
-	mu.Unlock()
-}
-
-// dynamicMockMajordomo is a test helper that allows dynamic fetch behavior.
-var _ majordomo.Service = (*dynamicMockMajordomo)(nil)
-
-type dynamicMockMajordomo struct {
-	fetchFunc func(ctx context.Context, uri string) ([]byte, error)
-}
-
-func (m *dynamicMockMajordomo) Fetch(ctx context.Context, uri string) ([]byte, error) {
-	return m.fetchFunc(ctx, uri)
-}
-
 func TestReloadWithInvalidCertificate(t *testing.T) {
 	ctx := context.Background()
 
@@ -618,6 +479,18 @@ func TestNewSentinelErrors(t *testing.T) {
 				standard.WithCertPEMURI("cert.pem"),
 			},
 			sentinel: certmanager.ErrNoCertKeyURI,
+		},
+		{
+			name: "ExpiredCertificate",
+			params: []standard.Parameter{
+				standard.WithMajordomo(mock.NewMajordomo(map[string][]byte{
+					"cert.pem": []byte(certtesting.ExpiredCrt),
+					"cert.key": []byte(certtesting.ExpiredKey),
+				})),
+				standard.WithCertPEMURI("cert.pem"),
+				standard.WithCertKeyURI("cert.key"),
+			},
+			sentinel: certmanager.ErrExpiredCertificate,
 		},
 	}
 
