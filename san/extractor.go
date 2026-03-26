@@ -56,14 +56,20 @@ func IdentityString(cert *x509.Certificate) string {
 	return identity
 }
 
-// ExtractAllSANs extracts all DNS Subject Alternative Names from a certificate.
+// ExtractAllSANs extracts all valid DNS Subject Alternative Names from a certificate.
 //
-// This function creates a copy of all DNS SAN values, ensuring the returned data
-// is independent of the original certificate structure.
+// Each DNS name is validated with ValidateDNSName; invalid names are logged and skipped.
+// The returned data is independent of the original certificate structure.
 func ExtractAllSANs(cert *x509.Certificate) *CertificateSANs {
 	sans := &CertificateSANs{
-		DNSNames: make([]string, len(cert.DNSNames)),
+		DNSNames: make([]string, 0, len(cert.DNSNames)),
 	}
-	copy(sans.DNSNames, cert.DNSNames)
+	for _, name := range cert.DNSNames {
+		if ValidateDNSName(name) != nil {
+			log.Warn().Str("name", name).Msg("Invalid DNS name in SAN extraction")
+			continue
+		}
+		sans.DNSNames = append(sans.DNSNames, name)
+	}
 	return sans
 }

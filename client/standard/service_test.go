@@ -269,7 +269,7 @@ func TestGetTLSConfig(t *testing.T) {
 				t.Helper()
 				require.NotNil(t, cfg)
 				require.Len(t, cfg.Certificates, 1)
-				require.Equal(t, uint16(0x0304), cfg.MinVersion) // TLS 1.3
+				require.Equal(t, uint16(tls.VersionTLS13), cfg.MinVersion)
 				require.Nil(t, cfg.RootCAs) // No CA specified
 			},
 		},
@@ -296,7 +296,7 @@ func TestGetTLSConfig(t *testing.T) {
 				t.Helper()
 				require.NotNil(t, cfg)
 				require.Len(t, cfg.Certificates, 1)
-				require.Equal(t, uint16(0x0304), cfg.MinVersion) // TLS 1.3
+				require.Equal(t, uint16(tls.VersionTLS13), cfg.MinVersion)
 				require.NotNil(t, cfg.RootCAs) // CA was specified
 			},
 		},
@@ -383,7 +383,7 @@ func TestWithFilesystem(t *testing.T) {
 	require.NotNil(t, cfg)
 	require.NotNil(t, cfg.RootCAs)
 	require.Len(t, cfg.Certificates, 1)
-	require.Equal(t, uint16(0x0304), cfg.MinVersion) // TLS 1.3
+	require.Equal(t, uint16(tls.VersionTLS13), cfg.MinVersion)
 }
 
 func TestNewSentinelErrors(t *testing.T) {

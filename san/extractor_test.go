@@ -355,6 +355,23 @@ func TestExtractAllSANs(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "Invalid DNS names filtered out",
+			cert: &x509.Certificate{
+				DNSNames: []string{
+					"valid.example.com",
+					"192.168.1.1",
+					"also-valid.example.com",
+					"-invalid.example.com",
+				},
+			},
+			wantSANs: &san.CertificateSANs{
+				DNSNames: []string{
+					"valid.example.com",
+					"also-valid.example.com",
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
