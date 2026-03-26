@@ -17,6 +17,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -112,11 +113,12 @@ func New(ctx context.Context, params ...Parameter) (*Service, error) {
 
 // ReloadCertificate attempts to reload the certificate from its source.
 // This is thread-safe and non-blocking. If a reload is already in progress,
-// this method returns immediately without waiting.
-func (s *Service) ReloadCertificate(ctx context.Context) {
+// this method returns nil immediately without waiting.
+// Returns an error if the reload fails (e.g., certificate fetch or parse error).
+func (s *Service) ReloadCertificate(ctx context.Context) error {
 	if !s.currentCertMutex.TryLock() {
 		// Certificate is already being reloaded; do nothing.
-		return
+		return nil
 	}
 	defer s.currentCertMutex.Unlock()
 
@@ -132,28 +134,32 @@ func (s *Service) ReloadCertificate(ctx context.Context) {
 	certPEMBlock, err := s.majordomo.Fetch(ctx, s.certPEMURI)
 	if err != nil {
 		s.log.Warn().Err(err).Msg("Failed to obtain server certificate during reload")
-		return
+		return fmt.Errorf("failed to obtain server certificate during reload: %w", err)
 	}
 	certKeyBlock, err := s.majordomo.Fetch(ctx, s.certKeyURI)
 	if err != nil {
 		s.log.Warn().Err(err).Msg("Failed to obtain server key during reload")
-		return
+		return fmt.Errorf("failed to obtain server key during reload: %w", err)
 	}
 
 	// Load the certificate pair.
 	serverCert, err := tls.X509KeyPair(certPEMBlock, certKeyBlock)
 	if err != nil {
 		s.log.Warn().Err(err).Msg("Failed to load certificate pair during reload")
-		return
+		return fmt.Errorf("failed to load certificate pair during reload: %w", err)
 	}
 	if len(serverCert.Certificate) == 0 {
 		s.log.Warn().Msg("Certificate file does not contain a certificate")
-		return
+		return fmt.Errorf("certificate file does not contain a certificate")
 	}
 	cert, err := x509.ParseCertificate(serverCert.Certificate[0])
-	if err != nil || cert == nil {
+	if err != nil {
 		s.log.Warn().Msg("Failed to parse certificate")
-		return
+		return fmt.Errorf("failed to parse certificate: %w", err)
+	}
+	if cert == nil {
+		s.log.Warn().Msg("Failed to parse certificate")
+		return errors.New("failed to parse certificate")
 	}
 
 	newExpiry := cert.NotAfter
@@ -163,7 +169,7 @@ func (s *Service) ReloadCertificate(ctx context.Context) {
 			Str("issued_by", cert.Issuer.CommonName).
 			Time("expiry", newExpiry).
 			Msg("Server certificate expired, send SIGHUP to reload it")
-		return
+		return fmt.Errorf("server certificate expired")
 	}
 
 	s.log.Info().
@@ -176,6 +182,8 @@ func (s *Service) ReloadCertificate(ctx context.Context) {
 		cert:   &serverCert,
 		expiry: newExpiry,
 	})
+
+	return nil
 }
 
 // GetCertificate returns the current certificate for TLS handshake.

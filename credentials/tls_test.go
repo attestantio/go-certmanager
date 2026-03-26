@@ -34,7 +34,7 @@ func (m *mockServerCertMgr) GetCertificate(_ *tls.ClientHelloInfo) (*tls.Certifi
 	return nil, nil
 }
 
-func (m *mockServerCertMgr) ReloadCertificate(_ context.Context) {}
+func (m *mockServerCertMgr) ReloadCertificate(_ context.Context) error { return nil }
 
 func (m *mockServerCertMgr) GetTLSConfig(_ context.Context) (*tls.Config, error) {
 	if m.err != nil {

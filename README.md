@@ -11,7 +11,7 @@ Go library providing certificate management capabilities for both server and cli
 The library supports:
   - Server certificate loading with automatic reload on expiry or SIGHUP signal
   - Client certificate loading for gRPC and TLS connections
-  - Subject Alternative Name (SAN) extraction following RFC 6125
+  - DNS-based SAN identity extraction with CN fallback (RFC 1123/6125)
   - Flexible certificate fetching via majordomo service
   - Thread-safe operations for concurrent access
 
@@ -61,7 +61,9 @@ if err != nil {
 tlsConfig, err := certMgr.GetTLSConfig(ctx)
 
 // Trigger reload (e.g., on SIGHUP)
-certMgr.ReloadCertificate(ctx)
+if err := certMgr.ReloadCertificate(ctx); err != nil {
+    log.Warn().Err(err).Msg("Certificate reload failed")
+}
 ```
 
 For peer-to-peer scenarios where the same certificate is used for both server and client roles, use `GetClientTLSConfig()` to get a static certificate config suitable for client connections:
@@ -102,19 +104,18 @@ Certificate data is fetched via [go-majordomo](https://github.com/wealdtech/go-m
 
 ### SAN Extraction
 
-The san package provides RFC 6125-compliant certificate identity extraction. It follows the standard priority order: DNS names > IP addresses > Email addresses > Common Name.
+The san package extracts DNS-based identity from X.509 certificates with CN fallback. DNS names are validated against RFC 1123 and RFC 6125; invalid names are skipped.
 
 ```go
 import "github.com/attestantio/go-certmanager/san"
 
 // Extract primary identity from certificate
 identity, source := san.ExtractIdentity(cert)
-// source indicates: IdentitySourceSANDNS, IdentitySourceSANIP,
-// IdentitySourceSANEmail, IdentitySourceCN, or IdentitySourceUnknown
+// source indicates: IdentitySourceSANDNS, IdentitySourceCN, or IdentitySourceUnknown
 
-// Extract all Subject Alternative Names
+// Extract all DNS Subject Alternative Names
 allSANs := san.ExtractAllSANs(cert)
-// Access: allSANs.DNSNames, allSANs.IPAddresses, allSANs.EmailAddresses
+// Access: allSANs.DNSNames
 ```
 
 ## Maintainers

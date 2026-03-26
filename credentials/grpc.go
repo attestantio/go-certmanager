@@ -28,7 +28,7 @@ import (
 //
 //	clientCertMgr, _ := clientcert.New(ctx, ...)
 //	creds, _ := credentials.NewGRPCClientCredentials(ctx, clientCertMgr)
-//	conn, _ := grpc.Dial("server:9091", grpc.WithTransportCredentials(creds))
+//	conn, _ := grpc.NewClient("server:9091", grpc.WithTransportCredentials(creds))
 func NewGRPCClientCredentials(ctx context.Context, clientCertMgr client.Service) (credentials.TransportCredentials, error) {
 	tlsCfg, err := clientCertMgr.GetTLSConfig(ctx)
 	if err != nil {

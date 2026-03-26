@@ -215,7 +215,8 @@ func TestReloadCertificate(t *testing.T) {
 	require.NoError(t, err)
 
 	// Trigger reload
-	svc.ReloadCertificate(ctx)
+	err = svc.ReloadCertificate(ctx)
+	require.NoError(t, err)
 
 	// Get new certificate
 	cert2, err := svc.GetCertificate(nil)
@@ -290,7 +291,8 @@ func TestReloadTimeout(t *testing.T) {
 	require.NoError(t, err)
 
 	// Reload should complete even with short timeout (mock is instant)
-	svc.ReloadCertificate(ctx)
+	err = svc.ReloadCertificate(ctx)
+	require.NoError(t, err)
 
 	cert, err := svc.GetCertificate(nil)
 	require.NoError(t, err)
@@ -529,7 +531,8 @@ func TestReloadWithInvalidCertificate(t *testing.T) {
 	require.NoError(t, err)
 
 	// Trigger reload - should fail but service should continue with old cert
-	svc.ReloadCertificate(ctx)
+	err = svc.ReloadCertificate(ctx)
+	require.Error(t, err)
 
 	// Should still return the old valid certificate
 	cert2, err := svc.GetCertificate(nil)
@@ -569,7 +572,8 @@ func TestReloadWithMismatchedKeyPair(t *testing.T) {
 	require.NoError(t, err)
 
 	// Trigger reload - should fail due to key mismatch
-	svc.ReloadCertificate(ctx)
+	err = svc.ReloadCertificate(ctx)
+	require.Error(t, err)
 
 	// Should still return the old valid certificate
 	cert2, err := svc.GetCertificate(nil)

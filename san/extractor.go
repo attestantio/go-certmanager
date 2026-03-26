@@ -17,31 +17,23 @@ import "crypto/x509"
 
 // ExtractIdentity extracts the primary client identity from an x509 certificate.
 //
-// It follows RFC 6125 compliant priority:
-//  1. DNS names from SAN extension (preferred for service-to-service authentication)
-//  2. IP addresses from SAN extension (for direct IP-based connections)
-//  3. Email addresses from SAN extension (common in client certificate user identity)
-//  4. Common Name (CN) - fallback for backward compatibility with legacy certificates
+// It checks DNS names from the SAN extension, validating each with ValidateDNSName
+// and returning the first valid one. Invalid DNS names are silently skipped.
+// If no valid DNS name is found, it falls back to the Common Name (CN) for
+// backward compatibility with legacy certificates.
 //
 // Returns the identity string and the source from which it was extracted.
 // If no identity can be determined, returns empty string and IdentitySourceUnknown.
 func ExtractIdentity(cert *x509.Certificate) (string, IdentitySource) {
-	// Priority 1: DNS names from SAN (RFC 6125 compliant).
-	if len(cert.DNSNames) > 0 && cert.DNSNames[0] != "" {
-		return cert.DNSNames[0], IdentitySourceSANDNS
+	// DNS names from SAN with validation.
+	for _, name := range cert.DNSNames {
+		if ValidateDNSName(name) != nil {
+			continue
+		}
+		return name, IdentitySourceSANDNS
 	}
 
-	// Priority 2: IP addresses from SAN.
-	if len(cert.IPAddresses) > 0 {
-		return cert.IPAddresses[0].String(), IdentitySourceSANIP
-	}
-
-	// Priority 3: Email addresses from SAN.
-	if len(cert.EmailAddresses) > 0 && cert.EmailAddresses[0] != "" {
-		return cert.EmailAddresses[0], IdentitySourceSANEmail
-	}
-
-	// Priority 4: CN fallback for backward compatibility with legacy certificates.
+	// CN fallback for backward compatibility with legacy certificates.
 	if cert.Subject.CommonName != "" {
 		return cert.Subject.CommonName, IdentitySourceCN
 	}
@@ -49,25 +41,14 @@ func ExtractIdentity(cert *x509.Certificate) (string, IdentitySource) {
 	return "", IdentitySourceUnknown
 }
 
-// ExtractAllSANs extracts all Subject Alternative Names from a certificate.
+// ExtractAllSANs extracts all DNS Subject Alternative Names from a certificate.
 //
-// This function creates copies of all SAN values, ensuring the returned data
-// is independent of the original certificate structure. IP addresses are
-// converted to string format.
+// This function creates a copy of all DNS SAN values, ensuring the returned data
+// is independent of the original certificate structure.
 func ExtractAllSANs(cert *x509.Certificate) *CertificateSANs {
 	sans := &CertificateSANs{
-		DNSNames:       make([]string, len(cert.DNSNames)),
-		IPAddresses:    make([]string, len(cert.IPAddresses)),
-		EmailAddresses: make([]string, len(cert.EmailAddresses)),
+		DNSNames: make([]string, len(cert.DNSNames)),
 	}
-
 	copy(sans.DNSNames, cert.DNSNames)
-
-	for i, ip := range cert.IPAddresses {
-		sans.IPAddresses[i] = ip.String()
-	}
-
-	copy(sans.EmailAddresses, cert.EmailAddresses)
-
 	return sans
 }

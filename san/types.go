@@ -13,14 +13,10 @@
 
 package san
 
-// CertificateSANs contains all Subject Alternative Name values from a certificate.
+// CertificateSANs contains DNS Subject Alternative Name values from a certificate.
 type CertificateSANs struct {
 	// DNSNames contains all DNS names from the certificate's SAN extension.
 	DNSNames []string
-	// IPAddresses contains all IP addresses from the certificate's SAN extension (as strings).
-	IPAddresses []string
-	// EmailAddresses contains all email addresses from the certificate's SAN extension.
-	EmailAddresses []string
 }
 
 // IdentitySource indicates where the client identity was extracted from.
@@ -31,10 +27,6 @@ const (
 	IdentitySourceUnknown IdentitySource = iota
 	// IdentitySourceSANDNS indicates the identity was extracted from a DNS name in the SAN extension.
 	IdentitySourceSANDNS
-	// IdentitySourceSANIP indicates the identity was extracted from an IP address in the SAN extension.
-	IdentitySourceSANIP
-	// IdentitySourceSANEmail indicates the identity was extracted from an email address in the SAN extension.
-	IdentitySourceSANEmail
 	// IdentitySourceCN indicates the identity was extracted from the Common Name (legacy fallback).
 	IdentitySourceCN
 )
@@ -43,8 +35,6 @@ const (
 var identitySourceStrings = [...]string{
 	"unknown",
 	"san-dns",
-	"san-ip",
-	"san-email",
 	"cn",
 }
 

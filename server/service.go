@@ -27,9 +27,10 @@ type Service interface {
 
 	// ReloadCertificate attempts to reload the certificate from its source.
 	// This is thread-safe and non-blocking. If a reload is already in progress,
-	// this method returns immediately without waiting.
+	// this method returns nil immediately without waiting.
+	// Returns an error if the reload fails (e.g., certificate fetch or parse error).
 	// Typically called in response to SIGHUP or expiry detection.
-	ReloadCertificate(ctx context.Context)
+	ReloadCertificate(ctx context.Context) error
 
 	// GetTLSConfig returns a TLS configuration for server use.
 	// The returned config includes GetCertificate callback and minimum TLS version.

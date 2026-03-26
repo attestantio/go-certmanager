@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.1.0] - Unreleased
+## [0.1.0] - 2026-03-26
 
 ### Added
 
@@ -24,10 +24,11 @@ All notable changes to this project will be documented in this file.
   - Supports files, HTTP endpoints, and secret vaults via majordomo confidants
 
 - **SAN Extraction Utilities** (`san/`)
-  - RFC 6125-compliant identity extraction from X.509 certificates
-  - Priority order: DNS names > IP addresses > Email addresses > Common Name
+  - DNS-only identity extraction from X.509 certificates with CN fallback
+  - DNS name validation following RFC 1123 and RFC 6125
   - `ExtractIdentity()` for primary identity retrieval with source indication
-  - `ExtractAllSANs()` for comprehensive Subject Alternative Name extraction
+  - `ExtractAllSANs()` for DNS Subject Alternative Name extraction
+  - `ValidateDNSName()` for RFC-compliant DNS name validation
 
 - **gRPC Credentials Helpers** (`credentials/`)
   - `NewGRPCClientCredentials()` for simplified gRPC client setup
