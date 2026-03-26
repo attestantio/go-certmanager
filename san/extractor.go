@@ -13,12 +13,18 @@
 
 package san
 
-import "crypto/x509"
+import (
+	"crypto/x509"
+
+	zerologger "github.com/rs/zerolog/log"
+)
+
+var log = zerologger.With().Str("service", "certmanager").Str("impl", "san").Logger()
 
 // ExtractIdentity extracts the primary client identity from an x509 certificate.
 //
 // It checks DNS names from the SAN extension, validating each with ValidateDNSName
-// and returning the first valid one. Invalid DNS names are silently skipped.
+// and returning the first valid one. Invalid DNS names are logged and skipped.
 // If no valid DNS name is found, it falls back to the Common Name (CN) for
 // backward compatibility with legacy certificates.
 //
@@ -28,6 +34,7 @@ func ExtractIdentity(cert *x509.Certificate) (string, IdentitySource) {
 	// DNS names from SAN with validation.
 	for _, name := range cert.DNSNames {
 		if ValidateDNSName(name) != nil {
+			log.Warn().Str("name", name).Msg("Invalid DNS name")
 			continue
 		}
 		return name, IdentitySourceSANDNS
