@@ -19,6 +19,7 @@ import (
 	zerologger "github.com/rs/zerolog/log"
 )
 
+//nolint:attgo // attgo_no_pkg_logger
 var log = zerologger.With().Str("service", "certmanager").Str("impl", "san").Logger()
 
 // ExtractIdentity extracts the primary client identity from an x509 certificate.
