@@ -41,6 +41,13 @@ func ExtractIdentity(cert *x509.Certificate) (string, IdentitySource) {
 	return "", IdentitySourceUnknown
 }
 
+// IdentityString returns the primary identity string from a certificate.
+// This is a convenience wrapper around ExtractIdentity that discards the source.
+func IdentityString(cert *x509.Certificate) string {
+	identity, _ := ExtractIdentity(cert)
+	return identity
+}
+
 // ExtractAllSANs extracts all DNS Subject Alternative Names from a certificate.
 //
 // This function creates a copy of all DNS SAN values, ensuring the returned data

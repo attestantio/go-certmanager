@@ -52,8 +52,8 @@
 //	conn, _ := grpc.NewClient("peer:port",
 //	    grpc.WithTransportCredentials(credentials.NewTLS(clientTLSConfig)))
 //
-// This is particularly useful for connection pooling, as new connections
-// automatically pick up reloaded certificates.
+// This is useful for peer-to-peer communication where a single certificate
+// serves both roles.
 //
 // Client Certificate Management:
 //

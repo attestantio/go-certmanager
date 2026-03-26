@@ -29,13 +29,14 @@ type Majordomo struct {
 var _ majordomo.Service = (*Majordomo)(nil)
 
 // NewMajordomo creates a new mock majordomo with preset URI-to-data mappings.
-// The data map should contain URIs as keys and certificate/key data as values.
+// The data map keys are arbitrary strings matched exactly by Fetch — they do not
+// need to be valid URIs or follow any confidant scheme.
 //
 // Example usage:
 //
 //	majordomoSvc := mock.NewMajordomo(map[string][]byte{
-//	    "file:///path/to/cert.pem": []byte(testing.Client01Crt),
-//	    "file:///path/to/cert.key": []byte(testing.Client01Key),
+//	    "cert.pem": []byte(testing.Client01Crt),
+//	    "cert.key": []byte(testing.Client01Key),
 //	})
 func NewMajordomo(data map[string][]byte) *Majordomo {
 	return &Majordomo{data: data}

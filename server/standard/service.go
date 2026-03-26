@@ -84,7 +84,7 @@ func New(ctx context.Context, params ...Parameter) (*Service, error) {
 		return nil, certmanager.ErrEmptyCertificate
 	}
 	cert, err := x509.ParseCertificate(serverCert.Certificate[0])
-	if err != nil || cert == nil {
+	if err != nil {
 		return nil, fmt.Errorf("failed to parse server certificate: %w", err)
 	}
 	if cert.NotAfter.Before(time.Now()) {
@@ -93,7 +93,7 @@ func New(ctx context.Context, params ...Parameter) (*Service, error) {
 	}
 
 	log.Info().
-		Str("identity", certIdentity(cert)).
+		Str("identity", san.IdentityString(cert)).
 		Str("issued_by", cert.Issuer.CommonName).
 		Time("valid_until", cert.NotAfter).
 		Msg("Server certificate loaded")
@@ -151,30 +151,26 @@ func (s *Service) ReloadCertificate(ctx context.Context) error {
 	}
 	if len(serverCert.Certificate) == 0 {
 		s.log.Warn().Msg("Certificate file does not contain a certificate")
-		return fmt.Errorf("certificate file does not contain a certificate")
+		return certmanager.ErrEmptyCertificate
 	}
 	cert, err := x509.ParseCertificate(serverCert.Certificate[0])
 	if err != nil {
-		s.log.Warn().Msg("Failed to parse certificate")
+		s.log.Warn().Err(err).Msg("Failed to parse certificate")
 		return fmt.Errorf("failed to parse certificate: %w", err)
-	}
-	if cert == nil {
-		s.log.Warn().Msg("Failed to parse certificate")
-		return fmt.Errorf("failed to parse certificate")
 	}
 
 	newExpiry := cert.NotAfter
 	if newExpiry.Before(lastReloadAttemptTime) {
 		s.log.Warn().
-			Str("identity", certIdentity(cert)).
+			Str("identity", san.IdentityString(cert)).
 			Str("issued_by", cert.Issuer.CommonName).
 			Time("expiry", newExpiry).
 			Msg("Server certificate expired, send SIGHUP to reload it")
-		return fmt.Errorf("server certificate expired")
+		return certmanager.ErrExpiredCertificate
 	}
 
 	s.log.Info().
-		Str("identity", certIdentity(cert)).
+		Str("identity", san.IdentityString(cert)).
 		Str("issued_by", cert.Issuer.CommonName).
 		Time("valid_until", newExpiry).
 		Msg("Server certificate reloaded successfully")
@@ -210,9 +206,7 @@ func (s *Service) GetTLSConfig(_ context.Context) (*tls.Config, error) {
 
 // GetClientTLSConfig returns a TLS configuration suitable for client connections.
 // Unlike GetTLSConfig(), this returns a config with static certificates suitable
-// for use in gRPC client credentials. The certificate is fetched at call time,
-// so connection pools that call this method when creating new connections will
-// automatically pick up reloaded certificates.
+// for use in gRPC client credentials.
 func (s *Service) GetClientTLSConfig(ctx context.Context) (*tls.Config, error) {
 	current := s.currentCert.Load()
 	if current == nil || current.cert == nil {
@@ -226,9 +220,3 @@ func (s *Service) GetClientTLSConfig(ctx context.Context) (*tls.Config, error) {
 	}, nil
 }
 
-// certIdentity returns the primary identity from a certificate
-// using the san package's validated extraction logic.
-func certIdentity(cert *x509.Certificate) string {
-	identity, _ := san.ExtractIdentity(cert)
-	return identity
-}

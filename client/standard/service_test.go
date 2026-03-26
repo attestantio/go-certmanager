@@ -169,6 +169,41 @@ func TestNew(t *testing.T) {
 			},
 			wantErr: true,
 		},
+		{
+			name: "InvalidCA",
+			params: func(t *testing.T) []standard.Parameter {
+				t.Helper()
+				majordomoSvc := mock.NewMajordomo(map[string][]byte{
+					"cert.pem": []byte(certtesting.ClientTest01Crt),
+					"cert.key": []byte(certtesting.ClientTest01Key),
+					"ca.pem":   []byte("invalid CA"),
+				})
+				return []standard.Parameter{
+					standard.WithMajordomo(majordomoSvc),
+					standard.WithCertPEMURI("cert.pem"),
+					standard.WithCertKeyURI("cert.key"),
+					standard.WithCACertURI("ca.pem"),
+				}
+			},
+			wantErr: true,
+		},
+		{
+			name: "CAFetchError",
+			params: func(t *testing.T) []standard.Parameter {
+				t.Helper()
+				majordomoSvc := mock.NewMajordomo(map[string][]byte{
+					"cert.pem": []byte(certtesting.ClientTest01Crt),
+					"cert.key": []byte(certtesting.ClientTest01Key),
+				})
+				return []standard.Parameter{
+					standard.WithMajordomo(majordomoSvc),
+					standard.WithCertPEMURI("cert.pem"),
+					standard.WithCertKeyURI("cert.key"),
+					standard.WithCACertURI("ca.pem"),
+				}
+			},
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -264,48 +299,6 @@ func TestGetTLSConfig(t *testing.T) {
 				require.Equal(t, uint16(0x0304), cfg.MinVersion) // TLS 1.3
 				require.NotNil(t, cfg.RootCAs) // CA was specified
 			},
-		},
-		{
-			name: "InvalidCA",
-			setup: func(t *testing.T) *standard.Service {
-				t.Helper()
-				majordomoSvc := mock.NewMajordomo(map[string][]byte{
-					"cert.pem": []byte(certtesting.ClientTest01Crt),
-					"cert.key": []byte(certtesting.ClientTest01Key),
-					"ca.pem":   []byte("invalid CA"),
-				})
-				svc, err := standard.New(ctx,
-					standard.WithMajordomo(majordomoSvc),
-					standard.WithCertPEMURI("cert.pem"),
-					standard.WithCertKeyURI("cert.key"),
-					standard.WithCACertURI("ca.pem"),
-				)
-				require.NoError(t, err)
-				return svc
-			},
-			wantErr: true,
-		},
-		{
-			name: "CAFetchError",
-			setup: func(t *testing.T) *standard.Service {
-				t.Helper()
-				// Majordomo with cert/key but CA fetch will fail
-				data := map[string][]byte{
-					"cert.pem": []byte(certtesting.ClientTest01Crt),
-					"cert.key": []byte(certtesting.ClientTest01Key),
-					// "ca.pem" intentionally missing
-				}
-				majordomoSvc := mock.NewMajordomo(data)
-				svc, err := standard.New(ctx,
-					standard.WithMajordomo(majordomoSvc),
-					standard.WithCertPEMURI("cert.pem"),
-					standard.WithCertKeyURI("cert.key"),
-					standard.WithCACertURI("ca.pem"),
-				)
-				require.NoError(t, err)
-				return svc
-			},
-			wantErr: true,
 		},
 	}
 
