@@ -285,7 +285,7 @@ func TestReloadTimeout(t *testing.T) {
 		standard.WithMajordomo(majordomoSvc),
 		standard.WithCertPEMURI("cert.pem"),
 		standard.WithCertKeyURI("cert.key"),
-		standard.WithReloadTimeout(1*time.Millisecond),
+		standard.WithLoadTimeout(1*time.Millisecond),
 	)
 	require.NoError(t, err)
 

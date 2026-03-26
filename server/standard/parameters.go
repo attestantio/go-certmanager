@@ -22,11 +22,11 @@ import (
 )
 
 type parameters struct {
-	logLevel      zerolog.Level
-	majordomo     majordomo.Service
-	reloadTimeout time.Duration
-	certPEMURI    string
-	certKeyURI    string
+	logLevel    zerolog.Level
+	majordomo   majordomo.Service
+	loadTimeout time.Duration
+	certPEMURI  string
+	certKeyURI  string
 }
 
 // Parameter is the interface for service parameters.
@@ -54,11 +54,11 @@ func WithMajordomo(service majordomo.Service) Parameter {
 	})
 }
 
-// WithReloadTimeout sets the reload timeout for the module.
-// If set to 0, reloads will have no timeout.
-func WithReloadTimeout(reloadTimeout time.Duration) Parameter {
+// WithLoadTimeout sets the load timeout for the module.
+// If set to 0, loads will have no timeout.
+func WithLoadTimeout(timeout time.Duration) Parameter {
 	return parameterFunc(func(p *parameters) {
-		p.reloadTimeout = reloadTimeout
+		p.loadTimeout = timeout
 	})
 }
 

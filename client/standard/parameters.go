@@ -14,17 +14,20 @@
 package standard
 
 import (
+	"time"
+
 	certmanager "github.com/attestantio/go-certmanager"
 	"github.com/rs/zerolog"
 	"github.com/wealdtech/go-majordomo"
 )
 
 type parameters struct {
-	logLevel   zerolog.Level
-	majordomo  majordomo.Service
-	certPEMURI string
-	certKeyURI string
-	caCertURI  string // Optional.
+	logLevel    zerolog.Level
+	majordomo   majordomo.Service
+	loadTimeout time.Duration
+	certPEMURI  string
+	certKeyURI  string
+	caCertURI   string // Optional.
 }
 
 // Parameter is the interface for service parameters.
@@ -71,6 +74,14 @@ func WithCertPEMURI(certPEMURI string) Parameter {
 func WithCACertURI(caCertURI string) Parameter {
 	return parameterFunc(func(p *parameters) {
 		p.caCertURI = caCertURI
+	})
+}
+
+// WithLoadTimeout sets the load timeout for the module.
+// If set to 0, loads will have no timeout.
+func WithLoadTimeout(timeout time.Duration) Parameter {
+	return parameterFunc(func(p *parameters) {
+		p.loadTimeout = timeout
 	})
 }
 

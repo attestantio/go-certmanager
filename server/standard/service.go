@@ -42,11 +42,11 @@ var _ server.Service = (*Service)(nil)
 
 // Service is the standard server certificate manager implementation.
 type Service struct {
-	log           zerolog.Logger
-	majordomo     majordomo.Service
-	reloadTimeout time.Duration
-	certPEMURI    string
-	certKeyURI    string
+	log         zerolog.Logger
+	majordomo   majordomo.Service
+	loadTimeout time.Duration
+	certPEMURI  string
+	certKeyURI  string
 
 	currentCert      atomic.Pointer[certWithExpiry]
 	currentCertMutex sync.Mutex
@@ -65,50 +65,19 @@ func New(ctx context.Context, params ...Parameter) (*Service, error) {
 		log = log.Level(parameters.logLevel)
 	}
 
-	// Load the certificates immediately.
-	certPEMBlock, err := parameters.majordomo.Fetch(ctx, parameters.certPEMURI)
-	if err != nil {
-		return nil, fmt.Errorf("failed to obtain server certificate: %w", err)
-	}
-	certKeyBlock, err := parameters.majordomo.Fetch(ctx, parameters.certKeyURI)
-	if err != nil {
-		return nil, fmt.Errorf("failed to obtain server key: %w", err)
-	}
-
-	// Initialize the certificate pair.
-	serverCert, err := tls.X509KeyPair(certPEMBlock, certKeyBlock)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load certificate pair: %w", err)
-	}
-	if len(serverCert.Certificate) == 0 {
-		return nil, certmanager.ErrEmptyCertificate
-	}
-	cert, err := x509.ParseCertificate(serverCert.Certificate[0])
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse server certificate: %w", err)
-	}
-	if cert.NotAfter.Before(time.Now()) {
-		log.Error().Time("expiry", cert.NotAfter).Msg("Server certificate expired")
-		return nil, certmanager.ErrExpiredCertificate
-	}
-
-	log.Info().
-		Str("identity", san.IdentityString(cert)).
-		Str("issued_by", cert.Issuer.CommonName).
-		Time("valid_until", cert.NotAfter).
-		Msg("Server certificate loaded")
-
 	s := &Service{
-		log:           log,
-		majordomo:     parameters.majordomo,
-		certPEMURI:    parameters.certPEMURI,
-		certKeyURI:    parameters.certKeyURI,
-		reloadTimeout: parameters.reloadTimeout,
+		log:         log,
+		majordomo:   parameters.majordomo,
+		certPEMURI:  parameters.certPEMURI,
+		certKeyURI:  parameters.certKeyURI,
+		loadTimeout: parameters.loadTimeout,
 	}
-	s.currentCert.Store(&certWithExpiry{
-		cert:   &serverCert,
-		expiry: cert.NotAfter,
-	})
+
+	// Load the certificates immediately.
+	if _, err := s.loadCertificate(ctx); err != nil {
+		return nil, fmt.Errorf("failed to load server certificate: %w", err)
+	}
+
 	return s, nil
 }
 
@@ -119,66 +88,22 @@ func New(ctx context.Context, params ...Parameter) (*Service, error) {
 func (s *Service) ReloadCertificate(ctx context.Context) error {
 	if !s.currentCertMutex.TryLock() {
 		// Certificate is already being reloaded; do nothing.
+		s.log.Debug().Msg("Certificate is already being reloaded; ReloadCertificate will do nothing")
 		return nil
 	}
 	defer s.currentCertMutex.Unlock()
 
 	lastReloadAttemptTime := time.Now()
 
-	if s.reloadTimeout > 0 {
-		var cancel context.CancelFunc
-		// Give up on the reload if it takes longer than the reload timeout.
-		ctx, cancel = context.WithDeadline(ctx, lastReloadAttemptTime.Add(s.reloadTimeout))
-		defer cancel()
+	newExpiry, err := s.loadCertificate(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to reload server certificate: %w", err)
 	}
 
-	certPEMBlock, err := s.majordomo.Fetch(ctx, s.certPEMURI)
-	if err != nil {
-		s.log.Warn().Err(err).Msg("Failed to obtain server certificate during reload")
-		return fmt.Errorf("failed to obtain server certificate during reload: %w", err)
-	}
-	certKeyBlock, err := s.majordomo.Fetch(ctx, s.certKeyURI)
-	if err != nil {
-		s.log.Warn().Err(err).Msg("Failed to obtain server key during reload")
-		return fmt.Errorf("failed to obtain server key during reload: %w", err)
-	}
-
-	// Load the certificate pair.
-	serverCert, err := tls.X509KeyPair(certPEMBlock, certKeyBlock)
-	if err != nil {
-		s.log.Warn().Err(err).Msg("Failed to load certificate pair during reload")
-		return fmt.Errorf("failed to load certificate pair during reload: %w", err)
-	}
-	if len(serverCert.Certificate) == 0 {
-		s.log.Warn().Msg("Certificate file does not contain a certificate")
-		return certmanager.ErrEmptyCertificate
-	}
-	cert, err := x509.ParseCertificate(serverCert.Certificate[0])
-	if err != nil {
-		s.log.Warn().Err(err).Msg("Failed to parse certificate")
-		return fmt.Errorf("failed to parse certificate: %w", err)
-	}
-
-	newExpiry := cert.NotAfter
 	if newExpiry.Before(lastReloadAttemptTime) {
-		s.log.Warn().
-			Str("identity", san.IdentityString(cert)).
-			Str("issued_by", cert.Issuer.CommonName).
-			Time("expiry", newExpiry).
-			Msg("Server certificate expired, send SIGHUP to reload it")
+		s.log.Warn().Time("expiry", newExpiry).Msg("Server certificate expired, send SIGHUP to reload it")
 		return certmanager.ErrExpiredCertificate
 	}
-
-	s.log.Info().
-		Str("identity", san.IdentityString(cert)).
-		Str("issued_by", cert.Issuer.CommonName).
-		Time("valid_until", newExpiry).
-		Msg("Server certificate reloaded successfully")
-
-	s.currentCert.Store(&certWithExpiry{
-		cert:   &serverCert,
-		expiry: newExpiry,
-	})
 
 	return nil
 }
@@ -220,3 +145,50 @@ func (s *Service) GetClientTLSConfig(_ context.Context) (*tls.Config, error) {
 	}, nil
 }
 
+func (s *Service) loadCertificate(ctx context.Context) (time.Time, error) {
+	if s.loadTimeout > 0 {
+		var cancel context.CancelFunc
+		// Give up on the load if it takes longer than the load timeout.
+		ctx, cancel = context.WithDeadline(ctx, time.Now().Add(s.loadTimeout))
+		defer cancel()
+	}
+
+	certPEMBlock, err := s.majordomo.Fetch(ctx, s.certPEMURI)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to obtain server certificate: %w", err)
+	}
+	certKeyBlock, err := s.majordomo.Fetch(ctx, s.certKeyURI)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to obtain server key: %w", err)
+	}
+
+	// Initialize the certificate pair.
+	serverCert, err := tls.X509KeyPair(certPEMBlock, certKeyBlock)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to load certificate pair: %w", err)
+	}
+	if len(serverCert.Certificate) == 0 {
+		return time.Time{}, certmanager.ErrEmptyCertificate
+	}
+	cert, err := x509.ParseCertificate(serverCert.Certificate[0])
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to parse server certificate: %w", err)
+	}
+	if cert.NotAfter.Before(time.Now()) {
+		s.log.Error().Time("expiry", cert.NotAfter).Msg("Server certificate expired")
+		return time.Time{}, certmanager.ErrExpiredCertificate
+	}
+
+	s.currentCert.Store(&certWithExpiry{
+		cert:   &serverCert,
+		expiry: cert.NotAfter,
+	})
+
+	s.log.Info().
+		Str("identity", san.IdentityString(cert)).
+		Str("issued_by", cert.Issuer.CommonName).
+		Time("valid_until", cert.NotAfter).
+		Msg("Server certificate loaded")
+
+	return cert.NotAfter, nil
+}

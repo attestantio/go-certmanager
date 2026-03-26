@@ -48,6 +48,13 @@ func New(ctx context.Context, params ...Parameter) (*Service, error) {
 		log = log.Level(parameters.logLevel)
 	}
 
+	if parameters.loadTimeout > 0 {
+		var cancel context.CancelFunc
+		// Give up on the load if it takes longer than the load timeout.
+		ctx, cancel = context.WithDeadline(ctx, time.Now().Add(parameters.loadTimeout))
+		defer cancel()
+	}
+
 	// Validate the certificate at startup.
 	certPEMBlock, err := parameters.majordomo.Fetch(ctx, parameters.certPEMURI)
 	if err != nil {
@@ -115,4 +122,3 @@ func (s *Service) GetTLSConfig(_ context.Context) (*tls.Config, error) {
 		RootCAs:      s.rootCAs,
 	}, nil
 }
-
