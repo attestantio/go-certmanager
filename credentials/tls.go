@@ -33,6 +33,8 @@ import (
 //
 // The returned config requires and verifies client certificates, enforces TLS 1.3 minimum,
 // and uses the server certificate manager's dynamic certificate retrieval.
+// The returned config is a clone and can be further modified without affecting
+// the server certificate manager's internal state.
 //
 // Example usage:
 //

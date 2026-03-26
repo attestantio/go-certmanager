@@ -18,11 +18,12 @@ import (
 	"crypto/tls"
 )
 
-// Service manages server-side certificates with reload-on-expiry capabilities.
+// Service manages server-side certificates with manual reload capabilities.
 type Service interface {
 	// GetCertificate returns the current certificate for TLS handshake.
 	// This method is designed to be used as tls.Config.GetCertificate callback.
-	// It automatically reloads expired certificates.
+	// It does not check certificate expiry; callers should use
+	// ReloadCertificate to refresh certificates when needed.
 	GetCertificate(info *tls.ClientHelloInfo) (*tls.Certificate, error)
 
 	// ReloadCertificate attempts to reload the certificate from its source.

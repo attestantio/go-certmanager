@@ -7,15 +7,15 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - **Server Certificate Manager** (`server/standard/`)
-  - Dynamic certificate loading with automatic reload on expiry
-  - SIGHUP signal support for manual certificate reload
+  - Certificate loading with expiry validation at startup
+  - Manual reload via `ReloadCertificate()` (e.g., on SIGHUP)
   - Thread-safe certificate access using atomic operations
   - `GetTLSConfig()` for server-side TLS configuration with dynamic certificate callback
   - `GetClientTLSConfig()` for peer-to-peer scenarios using the same certificate
 
 - **Client Certificate Manager** (`client/standard/`)
-  - Client certificate loading for TLS/gRPC connections
-  - Optional CA certificate support for server verification
+  - Certificate loading with expiry validation at startup
+  - Cached certificate pair and CA pool loaded at construction time
   - `GetTLSConfig()` for client-side TLS configuration
   - `GetCertificatePair()` for direct certificate access
 

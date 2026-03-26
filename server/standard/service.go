@@ -207,7 +207,7 @@ func (s *Service) GetTLSConfig(_ context.Context) (*tls.Config, error) {
 // GetClientTLSConfig returns a TLS configuration suitable for client connections.
 // Unlike GetTLSConfig(), this returns a config with static certificates suitable
 // for use in gRPC client credentials.
-func (s *Service) GetClientTLSConfig(ctx context.Context) (*tls.Config, error) {
+func (s *Service) GetClientTLSConfig(_ context.Context) (*tls.Config, error) {
 	current := s.currentCert.Load()
 	if current == nil || current.cert == nil {
 		return nil, certmanager.ErrNoCertificateLoaded

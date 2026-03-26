@@ -30,7 +30,9 @@ var (
 	ErrDNSNameIsIPAddress  = errors.New("DNS name is an IP address")
 )
 
-// ValidateDNSName validates a DNS name according to RFC 1035 rules.
+// ValidateDNSName validates a DNS name according to RFC 1035 label rules.
+// Single-label names (e.g., "localhost") are accepted for internal/development use,
+// even though RFC 6125 Section 6.4.4 recommends against them as reference identifiers.
 // It returns a sentinel error describing the validation failure, or nil if the name is valid.
 func ValidateDNSName(name string) error {
 	if name == "" {

@@ -366,3 +366,22 @@ func TestExtractAllSANs(t *testing.T) {
 		})
 	}
 }
+
+func TestIdentitySourceString(t *testing.T) {
+	tests := []struct {
+		name   string
+		source san.IdentitySource
+		want   string
+	}{
+		{name: "Unknown", source: san.IdentitySourceUnknown, want: "unknown"},
+		{name: "SANDNS", source: san.IdentitySourceSANDNS, want: "san-dns"},
+		{name: "CN", source: san.IdentitySourceCN, want: "cn"},
+		{name: "OutOfRange", source: san.IdentitySource(99), want: "unknown"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, tt.source.String())
+		})
+	}
+}
