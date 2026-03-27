@@ -43,10 +43,6 @@ func (m *mockServerCertMgr) GetTLSConfig(_ context.Context) (*tls.Config, error)
 	return m.tlsConfig, nil
 }
 
-func (m *mockServerCertMgr) GetClientTLSConfig(_ context.Context) (*tls.Config, error) {
-	return nil, nil
-}
-
 func TestNewServerTLSConfig(t *testing.T) {
 	tests := []struct {
 		name      string

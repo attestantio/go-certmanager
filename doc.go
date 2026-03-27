@@ -44,16 +44,17 @@
 //	}
 //
 // For peer-to-peer scenarios where the same certificate is used for both
-// server and client roles, use GetClientTLSConfig() to get a static
-// certificate config suitable for client connections:
+// server and client roles, use the concrete standard.Service's
+// GetClientTLSConfig() to get a static certificate config suitable for
+// client connections:
 //
 //	// Use the same cert manager for client connections
 //	clientTLSConfig, _ := certMgr.GetClientTLSConfig(ctx)
 //	conn, _ := grpc.NewClient("peer:port",
 //	    grpc.WithTransportCredentials(credentials.NewTLS(clientTLSConfig)))
 //
-// This is useful for peer-to-peer communication where a single certificate
-// serves both roles.
+// Note: GetClientTLSConfig returns a point-in-time snapshot. After a reload,
+// callers must call it again and replace existing transport credentials.
 //
 // Client Certificate Management:
 //

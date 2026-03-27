@@ -77,6 +77,8 @@ conn, err := grpc.NewClient("peer:port",
 
 This is useful for peer-to-peer communication where a single certificate serves both roles.
 
+> **Note:** `GetClientTLSConfig()` returns a point-in-time snapshot. After a certificate reload (e.g., via SIGHUP), you must call it again and replace any existing transport credentials — live connections will otherwise continue using the old certificate.
+
 ### Client Certificate Management
 
 The client package provides certificate loading for client connections.

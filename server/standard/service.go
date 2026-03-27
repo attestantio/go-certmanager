@@ -124,9 +124,11 @@ func (s *Service) GetTLSConfig(_ context.Context) (*tls.Config, error) {
 // Unlike GetTLSConfig(), this returns a config with static certificates suitable
 // for use in gRPC client credentials.
 //
-// The returned config contains a snapshot of the current certificate. It will NOT
-// reflect subsequent ReloadCertificate calls; callers must call GetClientTLSConfig
-// again after a reload to obtain the updated certificate.
+// WARNING: The returned config contains a point-in-time snapshot of the certificate.
+// It will NOT reflect subsequent ReloadCertificate calls. After a reload (e.g., via
+// SIGHUP), callers must call GetClientTLSConfig again and replace any existing
+// transport credentials, otherwise live connections will continue using the old
+// certificate.
 func (s *Service) GetClientTLSConfig(_ context.Context) (*tls.Config, error) {
 	current := s.currentCert.Load()
 	if current == nil || current.cert == nil {
@@ -140,6 +142,13 @@ func (s *Service) GetClientTLSConfig(_ context.Context) (*tls.Config, error) {
 	}, nil
 }
 
+// loadCertificate fetches and validates the certificate pair from majordomo,
+// then atomically stores the new certificate. Callers must either hold
+// currentCertMutex or guarantee no concurrent access (e.g., during construction in New).
+//
+// Note: cert PEM and key PEM are fetched in two separate calls. A secret rotation
+// between fetches could produce a mismatched pair, but tls.X509KeyPair will catch
+// the mismatch and return an error, preserving the previously loaded certificate.
 func (s *Service) loadCertificate(ctx context.Context) error {
 	if s.loadTimeout > 0 {
 		var cancel context.CancelFunc
