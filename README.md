@@ -77,7 +77,20 @@ conn, err := grpc.NewClient("peer:port",
 
 This is useful for peer-to-peer communication where a single certificate serves both roles.
 
-> **Note:** `GetClientTLSConfig()` returns a point-in-time snapshot. After a certificate reload (e.g., via SIGHUP), you must call it again and replace any existing transport credentials — live connections will otherwise continue using the old certificate.
+> **Important:** `GetClientTLSConfig()` returns a point-in-time snapshot — it will **not** reflect subsequent `ReloadCertificate()` calls. After a SIGHUP reload, callers must re-fetch the client TLS config and replace existing transport credentials, otherwise live connections will continue using the old certificate.
+
+Recommended pattern for SIGHUP handlers:
+
+```go
+// In your SIGHUP handler:
+if err := certMgr.ReloadCertificate(ctx); err != nil {
+    log.Warn().Err(err).Msg("Certificate reload failed")
+} else {
+    // Re-fetch client TLS config after successful reload
+    clientTLSConfig, err = certMgr.GetClientTLSConfig(ctx)
+    // Replace transport credentials on your gRPC client connection
+}
+```
 
 ### Client Certificate Management
 

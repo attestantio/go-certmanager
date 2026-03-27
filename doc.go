@@ -53,8 +53,14 @@
 //	conn, _ := grpc.NewClient("peer:port",
 //	    grpc.WithTransportCredentials(credentials.NewTLS(clientTLSConfig)))
 //
-// Note: GetClientTLSConfig returns a point-in-time snapshot. After a reload,
-// callers must call it again and replace existing transport credentials.
+// Important: GetClientTLSConfig returns a point-in-time snapshot — it will not
+// reflect subsequent ReloadCertificate calls. After a SIGHUP reload, callers
+// must re-fetch the client TLS config and replace existing transport credentials.
+// Recommended pattern:
+//
+//	certMgr.ReloadCertificate(ctx)
+//	clientTLSConfig, _ = certMgr.GetClientTLSConfig(ctx)
+//	// Replace transport credentials on your gRPC client connection.
 //
 // Client Certificate Management:
 //

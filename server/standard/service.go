@@ -30,8 +30,10 @@ import (
 	"github.com/wealdtech/go-majordomo"
 )
 
-// certWithExpiry bundles a TLS certificate with its cached expiry time,
-// avoiding repeated x509.ParseCertificate calls on the hot path.
+// certWithExpiry bundles a TLS certificate with its cached expiry time.
+// The expiry field avoids repeated x509.ParseCertificate calls when exposing
+// certificate metadata (see issue #5: certificate metrics for consumers;
+// this reference will be removed when the issue is resolved).
 type certWithExpiry struct {
 	cert   *tls.Certificate
 	expiry time.Time
@@ -129,6 +131,12 @@ func (s *Service) GetTLSConfig(_ context.Context) (*tls.Config, error) {
 // SIGHUP), callers must call GetClientTLSConfig again and replace any existing
 // transport credentials, otherwise live connections will continue using the old
 // certificate.
+//
+// Recommended pattern for SIGHUP handlers:
+//
+//	certMgr.ReloadCertificate(ctx)
+//	newClientTLS, _ := certMgr.GetClientTLSConfig(ctx)
+// Replace the transport credentials on your gRPC client connection.
 func (s *Service) GetClientTLSConfig(_ context.Context) (*tls.Config, error) {
 	current := s.currentCert.Load()
 	if current == nil || current.cert == nil {
