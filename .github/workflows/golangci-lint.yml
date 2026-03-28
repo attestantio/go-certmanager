@@ -46,7 +46,7 @@ jobs:
 
       # Run using the action with custom binary
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v8
+        uses: golangci/golangci-lint-action@v9
         with:
           install-mode: "none"
           args: "--timeout=60m"
