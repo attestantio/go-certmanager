@@ -8,6 +8,9 @@
 *.so
 *.dylib
 
+# Custom golangci-lint binary (built from .custom-gcl.yml)
+custom-gcl
+
 # Test binary, built with `go test -c`
 *.test
 

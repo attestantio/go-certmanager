@@ -1,0 +1,504 @@
+// Copyright © 2026 Attestant Limited.
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package standard_test
+
+import (
+	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"os"
+	"path/filepath"
+	"sync"
+	"testing"
+	"time"
+
+	certmanager "github.com/attestantio/go-certmanager"
+	"github.com/attestantio/go-certmanager/server/standard"
+	certtesting "github.com/attestantio/go-certmanager/testing"
+	"github.com/attestantio/go-certmanager/testing/mock"
+	"github.com/stretchr/testify/require"
+	fileconfidant "github.com/wealdtech/go-majordomo/confidants/file"
+	majordomostandard "github.com/wealdtech/go-majordomo/standard"
+)
+
+// newMajordomo creates a majordomo service with file confidant registered.
+func newMajordomo(t *testing.T) *majordomostandard.Service {
+	t.Helper()
+	ctx := context.Background()
+
+	majordomoSvc, err := majordomostandard.New(ctx)
+	require.NoError(t, err)
+
+	// Register file confidant for file:// URIs
+	fileConf, err := fileconfidant.New(ctx)
+	require.NoError(t, err)
+	err = majordomoSvc.RegisterConfidant(ctx, fileConf)
+	require.NoError(t, err)
+
+	return majordomoSvc
+}
+
+func TestNew(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name    string
+		params  func(t *testing.T) []standard.Parameter
+		wantErr bool
+	}{
+		{
+			name: "Success",
+			params: func(t *testing.T) []standard.Parameter {
+				t.Helper()
+				majordomoSvc := mock.NewMajordomo(map[string][]byte{
+					"cert.pem": []byte(certtesting.SignerTest01Crt),
+					"cert.key": []byte(certtesting.SignerTest01Key),
+				})
+				return []standard.Parameter{
+					standard.WithMajordomo(majordomoSvc),
+					standard.WithCertPEMURI("cert.pem"),
+					standard.WithCertKeyURI("cert.key"),
+				}
+			},
+			wantErr: false,
+		},
+		{
+			name: "NoMajordomo",
+			params: func(t *testing.T) []standard.Parameter {
+				t.Helper()
+				return []standard.Parameter{
+					standard.WithCertPEMURI("cert.pem"),
+					standard.WithCertKeyURI("cert.key"),
+				}
+			},
+			wantErr: true,
+		},
+		{
+			name: "NoCertPEMURI",
+			params: func(t *testing.T) []standard.Parameter {
+				t.Helper()
+				majordomoSvc := mock.NewMajordomo(map[string][]byte{})
+				return []standard.Parameter{
+					standard.WithMajordomo(majordomoSvc),
+					standard.WithCertKeyURI("cert.key"),
+				}
+			},
+			wantErr: true,
+		},
+		{
+			name: "NoCertKeyURI",
+			params: func(t *testing.T) []standard.Parameter {
+				t.Helper()
+				majordomoSvc := mock.NewMajordomo(map[string][]byte{})
+				return []standard.Parameter{
+					standard.WithMajordomo(majordomoSvc),
+					standard.WithCertPEMURI("cert.pem"),
+				}
+			},
+			wantErr: true,
+		},
+		{
+			name: "InvalidCertificate",
+			params: func(t *testing.T) []standard.Parameter {
+				t.Helper()
+				majordomoSvc := mock.NewMajordomo(map[string][]byte{
+					"cert.pem": []byte("invalid"),
+					"cert.key": []byte("invalid"),
+				})
+				return []standard.Parameter{
+					standard.WithMajordomo(majordomoSvc),
+					standard.WithCertPEMURI("cert.pem"),
+					standard.WithCertKeyURI("cert.key"),
+				}
+			},
+			wantErr: true,
+		},
+		{
+			name: "FetchError",
+			params: func(t *testing.T) []standard.Parameter {
+				t.Helper()
+				majordomoSvc := mock.NewMajordomoWithError(os.ErrNotExist)
+				return []standard.Parameter{
+					standard.WithMajordomo(majordomoSvc),
+					standard.WithCertPEMURI("cert.pem"),
+					standard.WithCertKeyURI("cert.key"),
+				}
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := standard.New(ctx, tt.params(t)...)
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestGetCertificate(t *testing.T) {
+	ctx := context.Background()
+	majordomoSvc := mock.NewMajordomo(map[string][]byte{
+		"cert.pem": []byte(certtesting.SignerTest01Crt),
+		"cert.key": []byte(certtesting.SignerTest01Key),
+	})
+
+	svc, err := standard.New(ctx,
+		standard.WithMajordomo(majordomoSvc),
+		standard.WithCertPEMURI("cert.pem"),
+		standard.WithCertKeyURI("cert.key"),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, svc)
+
+	// Get certificate
+	cert, err := svc.GetCertificate(nil)
+	require.NoError(t, err)
+	require.NotNil(t, cert)
+	require.NotEmpty(t, cert.Certificate)
+
+	// Verify certificate is valid
+	x509Cert, err := x509.ParseCertificate(cert.Certificate[0])
+	require.NoError(t, err)
+	require.NotNil(t, x509Cert)
+	require.NotEmpty(t, x509Cert.Subject.CommonName)
+}
+
+func TestReloadCertificate(t *testing.T) {
+	ctx := context.Background()
+
+	// Create temp directory for certificates
+	tempDir := t.TempDir()
+	certPath := filepath.Join(tempDir, "server.crt")
+	keyPath := filepath.Join(tempDir, "server.key")
+
+	// Write initial certificate
+	err := os.WriteFile(certPath, []byte(certtesting.SignerTest01Crt), 0o600)
+	require.NoError(t, err)
+	err = os.WriteFile(keyPath, []byte(certtesting.SignerTest01Key), 0o600)
+	require.NoError(t, err)
+
+	// Create service with majordomo file confidant
+	svc, err := standard.New(ctx,
+		standard.WithMajordomo(newMajordomo(t)),
+		standard.WithCertPEMURI("file://"+certPath),
+		standard.WithCertKeyURI("file://"+keyPath),
+	)
+	require.NoError(t, err)
+
+	// Get initial certificate
+	cert1, err := svc.GetCertificate(nil)
+	require.NoError(t, err)
+	require.NotNil(t, cert1)
+	require.NotEmpty(t, cert1.Certificate)
+
+	// Replace certificate on disk with a different one
+	err = os.WriteFile(certPath, []byte(certtesting.SignerTest02Crt), 0o600)
+	require.NoError(t, err)
+	err = os.WriteFile(keyPath, []byte(certtesting.SignerTest02Key), 0o600)
+	require.NoError(t, err)
+
+	// Trigger reload
+	err = svc.ReloadCertificate(ctx)
+	require.NoError(t, err)
+
+	// Get new certificate
+	cert2, err := svc.GetCertificate(nil)
+	require.NoError(t, err)
+	require.NotNil(t, cert2)
+	require.NotEmpty(t, cert2.Certificate)
+
+	// Verify certificates are different
+	require.NotEqual(t, cert1.Certificate[0], cert2.Certificate[0], "Certificate should have changed after reload")
+
+	// Verify the new certificate is actually SignerTest02
+	x509Cert, err := x509.ParseCertificate(cert2.Certificate[0])
+	require.NoError(t, err)
+	require.Contains(t, x509Cert.Subject.CommonName, "signer-test02")
+}
+
+func TestConcurrentReload(t *testing.T) {
+	ctx := context.Background()
+
+	// Create temp directory for certificates
+	tempDir := t.TempDir()
+	certPath := filepath.Join(tempDir, "server.crt")
+	keyPath := filepath.Join(tempDir, "server.key")
+
+	// Write initial certificate
+	err := os.WriteFile(certPath, []byte(certtesting.SignerTest01Crt), 0o600)
+	require.NoError(t, err)
+	err = os.WriteFile(keyPath, []byte(certtesting.SignerTest01Key), 0o600)
+	require.NoError(t, err)
+
+	// Create service with majordomo file confidant
+	svc, err := standard.New(ctx,
+		standard.WithMajordomo(newMajordomo(t)),
+		standard.WithCertPEMURI("file://"+certPath),
+		standard.WithCertKeyURI("file://"+keyPath),
+	)
+	require.NoError(t, err)
+
+	// Trigger multiple concurrent reloads
+	// Only one should actually reload due to TryLock()
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			svc.ReloadCertificate(ctx)
+		}()
+	}
+	wg.Wait()
+
+	// Service should still work
+	cert, err := svc.GetCertificate(nil)
+	require.NoError(t, err)
+	require.NotNil(t, cert)
+}
+
+func TestReloadTimeout(t *testing.T) {
+	ctx := context.Background()
+
+	majordomoSvc := mock.NewMajordomo(map[string][]byte{
+		"cert.pem": []byte(certtesting.SignerTest01Crt),
+		"cert.key": []byte(certtesting.SignerTest01Key),
+	})
+
+	// Create service with very short timeout
+	svc, err := standard.New(ctx,
+		standard.WithMajordomo(majordomoSvc),
+		standard.WithCertPEMURI("cert.pem"),
+		standard.WithCertKeyURI("cert.key"),
+		standard.WithLoadTimeout(1*time.Millisecond),
+	)
+	require.NoError(t, err)
+
+	// Reload should complete even with short timeout (mock is instant)
+	err = svc.ReloadCertificate(ctx)
+	require.NoError(t, err)
+
+	cert, err := svc.GetCertificate(nil)
+	require.NoError(t, err)
+	require.NotNil(t, cert)
+}
+
+func TestGetTLSConfig(t *testing.T) {
+	ctx := context.Background()
+
+	majordomoSvc := mock.NewMajordomo(map[string][]byte{
+		"cert.pem": []byte(certtesting.SignerTest01Crt),
+		"cert.key": []byte(certtesting.SignerTest01Key),
+	})
+
+	svc, err := standard.New(ctx,
+		standard.WithMajordomo(majordomoSvc),
+		standard.WithCertPEMURI("cert.pem"),
+		standard.WithCertKeyURI("cert.key"),
+	)
+	require.NoError(t, err)
+
+	// Get TLS config
+	tlsCfg, err := svc.GetTLSConfig(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, tlsCfg)
+	require.NotNil(t, tlsCfg.GetCertificate)
+	require.Equal(t, uint16(tls.VersionTLS13), tlsCfg.MinVersion)
+
+	// Test GetCertificate callback works
+	cert, err := tlsCfg.GetCertificate(nil)
+	require.NoError(t, err)
+	require.NotNil(t, cert)
+}
+
+func TestGetClientTLSConfig(t *testing.T) {
+	ctx := context.Background()
+
+	majordomoSvc := mock.NewMajordomo(map[string][]byte{
+		"cert.pem": []byte(certtesting.SignerTest01Crt),
+		"cert.key": []byte(certtesting.SignerTest01Key),
+	})
+
+	svc, err := standard.New(ctx,
+		standard.WithMajordomo(majordomoSvc),
+		standard.WithCertPEMURI("cert.pem"),
+		standard.WithCertKeyURI("cert.key"),
+	)
+	require.NoError(t, err)
+
+	// Get client TLS config
+	tlsCfg, err := svc.GetClientTLSConfig(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, tlsCfg)
+	require.Nil(t, tlsCfg.GetCertificate) // Should not have callback for client config
+	require.Equal(t, uint16(tls.VersionTLS13), tlsCfg.MinVersion)
+	require.Len(t, tlsCfg.Certificates, 1) // Should have static certificate
+
+	// Verify certificate is valid
+	cert := tlsCfg.Certificates[0]
+	require.NotEmpty(t, cert.Certificate)
+	require.NotNil(t, cert.PrivateKey)
+
+	// Parse and verify certificate
+	x509Cert, err := x509.ParseCertificate(cert.Certificate[0])
+	require.NoError(t, err)
+	require.NotNil(t, x509Cert)
+}
+
+func TestReloadWithInvalidCertificate(t *testing.T) {
+	ctx := context.Background()
+
+	// Create temp directory for certificates
+	tempDir := t.TempDir()
+	certPath := filepath.Join(tempDir, "server.crt")
+	keyPath := filepath.Join(tempDir, "server.key")
+
+	// Write initial valid certificate
+	err := os.WriteFile(certPath, []byte(certtesting.SignerTest01Crt), 0o600)
+	require.NoError(t, err)
+	err = os.WriteFile(keyPath, []byte(certtesting.SignerTest01Key), 0o600)
+	require.NoError(t, err)
+
+	// Create service with majordomo file confidant
+	svc, err := standard.New(ctx,
+		standard.WithMajordomo(newMajordomo(t)),
+		standard.WithCertPEMURI("file://"+certPath),
+		standard.WithCertKeyURI("file://"+keyPath),
+	)
+	require.NoError(t, err)
+
+	// Get initial certificate
+	cert1, err := svc.GetCertificate(nil)
+	require.NoError(t, err)
+	require.NotNil(t, cert1)
+
+	// Replace with invalid certificate
+	err = os.WriteFile(certPath, []byte("invalid cert"), 0o600)
+	require.NoError(t, err)
+
+	// Trigger reload - should fail but service should continue with old cert
+	err = svc.ReloadCertificate(ctx)
+	require.Error(t, err)
+
+	// Should still return the old valid certificate
+	cert2, err := svc.GetCertificate(nil)
+	require.NoError(t, err)
+	require.NotNil(t, cert2)
+	require.Equal(t, cert1.Certificate[0], cert2.Certificate[0], "Should keep old certificate when reload fails")
+}
+
+func TestReloadWithMismatchedKeyPair(t *testing.T) {
+	ctx := context.Background()
+
+	// Create temp directory for certificates
+	tempDir := t.TempDir()
+	certPath := filepath.Join(tempDir, "server.crt")
+	keyPath := filepath.Join(tempDir, "server.key")
+
+	// Write initial valid certificate
+	err := os.WriteFile(certPath, []byte(certtesting.SignerTest01Crt), 0o600)
+	require.NoError(t, err)
+	err = os.WriteFile(keyPath, []byte(certtesting.SignerTest01Key), 0o600)
+	require.NoError(t, err)
+
+	// Create service with majordomo file confidant
+	svc, err := standard.New(ctx,
+		standard.WithMajordomo(newMajordomo(t)),
+		standard.WithCertPEMURI("file://"+certPath),
+		standard.WithCertKeyURI("file://"+keyPath),
+	)
+	require.NoError(t, err)
+
+	// Get initial certificate
+	cert1, err := svc.GetCertificate(nil)
+	require.NoError(t, err)
+
+	// Replace cert but keep old key (mismatched pair)
+	err = os.WriteFile(certPath, []byte(certtesting.SignerTest02Crt), 0o600)
+	require.NoError(t, err)
+
+	// Trigger reload - should fail due to key mismatch
+	err = svc.ReloadCertificate(ctx)
+	require.Error(t, err)
+
+	// Should still return the old valid certificate
+	cert2, err := svc.GetCertificate(nil)
+	require.NoError(t, err)
+	require.Equal(t, cert1.Certificate[0], cert2.Certificate[0], "Should keep old certificate when key mismatch")
+}
+
+func TestNewSentinelErrors(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name     string
+		params   []standard.Parameter
+		sentinel error
+	}{
+		{
+			name: "NoMajordomo",
+			params: []standard.Parameter{
+				standard.WithCertPEMURI("cert.pem"),
+				standard.WithCertKeyURI("cert.key"),
+			},
+			sentinel: certmanager.ErrNoMajordomo,
+		},
+		{
+			name: "NoCertPEMURI",
+			params: []standard.Parameter{
+				standard.WithMajordomo(mock.NewMajordomo(map[string][]byte{
+					"cert.pem": []byte("dummy"),
+					"cert.key": []byte("dummy"),
+				})),
+				standard.WithCertKeyURI("cert.key"),
+			},
+			sentinel: certmanager.ErrNoCertPEMURI,
+		},
+		{
+			name: "NoCertKeyURI",
+			params: []standard.Parameter{
+				standard.WithMajordomo(mock.NewMajordomo(map[string][]byte{
+					"cert.pem": []byte("dummy"),
+					"cert.key": []byte("dummy"),
+				})),
+				standard.WithCertPEMURI("cert.pem"),
+			},
+			sentinel: certmanager.ErrNoCertKeyURI,
+		},
+		{
+			name: "ExpiredCertificate",
+			params: []standard.Parameter{
+				standard.WithMajordomo(mock.NewMajordomo(map[string][]byte{
+					"cert.pem": []byte(certtesting.ExpiredCrt),
+					"cert.key": []byte(certtesting.ExpiredKey),
+				})),
+				standard.WithCertPEMURI("cert.pem"),
+				standard.WithCertKeyURI("cert.key"),
+			},
+			sentinel: certmanager.ErrExpiredCertificate,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := standard.New(ctx, test.params...)
+			require.Error(t, err)
+			require.ErrorIs(t, err, test.sentinel)
+		})
+	}
+}
