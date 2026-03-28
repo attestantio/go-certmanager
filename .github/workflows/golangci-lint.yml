@@ -25,7 +25,7 @@ jobs:
       # Cache the custom binary to speed up subsequent runs
       - name: Cache custom golangci-lint
         id: cache-custom-gcl
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ./custom-gcl
           key: custom-gcl-${{ hashFiles('.custom-gcl.yml') }}
