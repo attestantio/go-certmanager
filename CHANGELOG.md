@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.1.0] - 2026-03-26
+## [0.1.0] - 2026-04-13
 
 ### Added
 
@@ -11,7 +11,7 @@ All notable changes to this project will be documented in this file.
   - Manual reload via `ReloadCertificate()` (e.g., on SIGHUP)
   - Thread-safe certificate access using atomic operations
   - `GetTLSConfig()` for server-side TLS configuration with dynamic certificate callback
-  - `GetClientTLSConfig()` for peer-to-peer scenarios using the same certificate
+  - `GetClientTLSConfig()` on the concrete `standard.Service` for peer-to-peer scenarios using the same certificate
 
 - **Client Certificate Manager** (`client/standard/`)
   - Certificate loading with expiry validation at startup
@@ -27,7 +27,8 @@ All notable changes to this project will be documented in this file.
   - DNS-only identity extraction from X.509 certificates with CN fallback
   - DNS name validation following RFC 1123 and RFC 6125
   - `ExtractIdentity()` for primary identity retrieval with source indication
-  - `ExtractAllSANs()` for DNS Subject Alternative Name extraction
+  - `IdentityString()` convenience wrapper returning just the identity string
+  - `ExtractAllSANs()` for DNS Subject Alternative Name extraction (returns `CertificateSANs` struct)
   - `ValidateDNSName()` for RFC-compliant DNS name validation
 
 - **gRPC Credentials Helpers** (`credentials/`)

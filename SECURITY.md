@@ -11,7 +11,7 @@
 If you discover a security vulnerability in go-certmanager, please report it responsibly:
 
 1. **Do not** open a public issue
-2. Email security concerns to the maintainers
+2. Email security concerns to security@attestant.io
 3. Include a detailed description of the vulnerability
 4. Provide steps to reproduce if possible
 
