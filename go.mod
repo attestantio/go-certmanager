@@ -4,7 +4,7 @@ go 1.25.5
 
 require (
 	github.com/rs/zerolog v1.33.0
-	github.com/stretchr/testify v1.8.0
+	github.com/stretchr/testify v1.11.1
 	github.com/wealdtech/go-majordomo v1.1.2
 	google.golang.org/grpc v1.80.0
 )
