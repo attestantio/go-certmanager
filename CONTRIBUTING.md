@@ -9,14 +9,14 @@ Contributions to go-certmanager are welcome.
 3. Create a branch: `git checkout -b your-feature`
 4. Make your changes
 5. Run tests: `go test -race ./...`
-6. Run linting: `golangci-lint run`
+6. Run linting (builds and runs attestant's custom linter): `golangci-lint custom && ./custom-gcl run`
 7. Commit and push your changes
 8. Open a pull request
 
 ## Before Submitting
 
 - Run all tests: `go test -race ./...`
-- Run linting: `golangci-lint run`
+- Run linting: `golangci-lint custom && ./custom-gcl run`
 - Ensure code follows existing patterns and conventions
 - Add tests for new functionality
 
