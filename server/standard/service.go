@@ -23,21 +23,13 @@ import (
 	"time"
 
 	certmanager "github.com/attestantio/go-certmanager"
+	"github.com/attestantio/go-certmanager/metrics"
 	"github.com/attestantio/go-certmanager/san"
 	"github.com/attestantio/go-certmanager/server"
 	"github.com/rs/zerolog"
 	zerologger "github.com/rs/zerolog/log"
 	"github.com/wealdtech/go-majordomo"
 )
-
-// certWithExpiry bundles a TLS certificate with its cached expiry time.
-// The expiry field avoids repeated x509.ParseCertificate calls when exposing
-// certificate metadata (see issue #5: certificate metrics for consumers;
-// this reference will be removed when the issue is resolved).
-type certWithExpiry struct {
-	cert   *tls.Certificate
-	expiry time.Time
-}
 
 // Ensure Service implements server.Service.
 var _ server.Service = (*Service)(nil)
@@ -49,8 +41,9 @@ type Service struct {
 	loadTimeout time.Duration
 	certPEMURI  string
 	certKeyURI  string
+	name        string
 
-	currentCert      atomic.Pointer[certWithExpiry]
+	currentCert      atomic.Pointer[tls.Certificate]
 	currentCertMutex sync.Mutex
 }
 
@@ -67,12 +60,17 @@ func New(ctx context.Context, params ...Parameter) (*Service, error) {
 		log = log.Level(parameters.logLevel)
 	}
 
+	if err := metrics.Register(parameters.monitor); err != nil {
+		return nil, fmt.Errorf("failed to register metrics: %w", err)
+	}
+
 	s := &Service{
 		log:         log,
 		majordomo:   parameters.majordomo,
 		certPEMURI:  parameters.certPEMURI,
 		certKeyURI:  parameters.certKeyURI,
 		loadTimeout: parameters.loadTimeout,
+		name:        parameters.name,
 	}
 
 	// Load the certificates immediately.
@@ -105,11 +103,11 @@ func (s *Service) ReloadCertificate(ctx context.Context) error {
 // This method is designed to be used as tls.Config.GetCertificate callback.
 func (s *Service) GetCertificate(_ *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	current := s.currentCert.Load()
-	if current == nil || current.cert == nil {
+	if current == nil {
 		return nil, certmanager.ErrNoCertificateLoaded
 	}
 
-	return current.cert, nil
+	return current, nil
 }
 
 // GetTLSConfig returns a TLS configuration for server use.
@@ -139,13 +137,13 @@ func (s *Service) GetTLSConfig(_ context.Context) (*tls.Config, error) {
 // Replace the transport credentials on your gRPC client connection.
 func (s *Service) GetClientTLSConfig(_ context.Context) (*tls.Config, error) {
 	current := s.currentCert.Load()
-	if current == nil || current.cert == nil {
+	if current == nil {
 		return nil, certmanager.ErrNoCertificateLoaded
 	}
 
 	// Return a TLS config with static certificates for client use.
 	return &tls.Config{
-		Certificates: []tls.Certificate{*current.cert},
+		Certificates: []tls.Certificate{*current},
 		MinVersion:   tls.VersionTLS13,
 	}, nil
 }
@@ -182,25 +180,30 @@ func (s *Service) loadCertificate(ctx context.Context) error {
 	if len(serverCert.Certificate) == 0 {
 		return certmanager.ErrEmptyCertificate
 	}
-	cert, err := x509.ParseCertificate(serverCert.Certificate[0])
-	if err != nil {
-		return fmt.Errorf("failed to parse server certificate: %w", err)
+	// Backfill Leaf when GODEBUG=x509keypairleaf=0 disables the Go 1.23+ auto-population.
+	if serverCert.Leaf == nil {
+		parsedCert, err := x509.ParseCertificate(serverCert.Certificate[0])
+		if err != nil {
+			return fmt.Errorf("failed to parse server certificate: %w", err)
+		}
+		serverCert.Leaf = parsedCert
 	}
 
-	if cert.NotAfter.Before(time.Now()) {
-		s.log.Error().Time("expiry", cert.NotAfter).Msg("Server certificate expired")
+	if serverCert.Leaf.NotAfter.Before(time.Now()) {
+		s.log.Error().Time("expiry", serverCert.Leaf.NotAfter).Msg("Server certificate expired")
 		return certmanager.ErrExpiredCertificate
 	}
 
-	s.currentCert.Store(&certWithExpiry{
-		cert:   &serverCert,
-		expiry: cert.NotAfter,
-	})
+	s.currentCert.Store(&serverCert)
+
+	if s.name != "" {
+		metrics.SetCertificateExpiry(s.name, metrics.RoleServer, serverCert.Leaf.NotAfter, serverCert.Leaf.NotBefore)
+	}
 
 	s.log.Info().
-		Str("identity", san.IdentityString(cert)).
-		Str("issued_by", cert.Issuer.CommonName).
-		Time("valid_until", cert.NotAfter).
+		Str("identity", san.IdentityString(serverCert.Leaf)).
+		Str("issued_by", serverCert.Leaf.Issuer.CommonName).
+		Time("valid_until", serverCert.Leaf.NotAfter).
 		Msg("Server certificate loaded")
 
 	return nil

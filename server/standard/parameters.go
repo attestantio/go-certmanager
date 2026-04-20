@@ -17,16 +17,19 @@ import (
 	"time"
 
 	certmanager "github.com/attestantio/go-certmanager"
+	"github.com/attestantio/go-certmanager/metrics"
 	"github.com/rs/zerolog"
 	"github.com/wealdtech/go-majordomo"
 )
 
 type parameters struct {
+	monitor     metrics.Service
 	logLevel    zerolog.Level
 	majordomo   majordomo.Service
 	loadTimeout time.Duration
 	certPEMURI  string
 	certKeyURI  string
+	name        string
 }
 
 // Parameter is the interface for service parameters.
@@ -76,6 +79,29 @@ func WithCertPEMURI(certPEMURI string) Parameter {
 	})
 }
 
+// WithName sets the certificate name used as the metric "name" label.
+// The value is stable across certificate rotations and distinguishes multiple
+// managers within a single process (e.g. "dirk", "tracing", "api").
+//
+// WARNING: the "name" label is a Prometheus label. Use a low-cardinality,
+// stable identifier — never a dynamic or per-request value, or the metric
+// will grow an unbounded set of time series.
+//
+// Required when WithMonitor is set.
+func WithName(name string) Parameter {
+	return parameterFunc(func(p *parameters) {
+		p.name = name
+	})
+}
+
+// WithMonitor sets the monitor service used to opt into metric recording.
+// When omitted (or nil), the manager records no metrics and carries zero overhead.
+func WithMonitor(monitor metrics.Service) Parameter {
+	return parameterFunc(func(p *parameters) {
+		p.monitor = monitor
+	})
+}
+
 // parseAndCheckParameters parses and checks parameters to ensure that mandatory parameters are present and correct.
 func parseAndCheckParameters(params ...Parameter) (*parameters, error) {
 	parameters := parameters{
@@ -95,6 +121,9 @@ func parseAndCheckParameters(params ...Parameter) (*parameters, error) {
 	}
 	if parameters.certKeyURI == "" {
 		return nil, certmanager.ErrNoCertKeyURI
+	}
+	if parameters.monitor != nil && parameters.name == "" {
+		return nil, certmanager.ErrNoNameWithMonitor
 	}
 
 	return &parameters, nil
