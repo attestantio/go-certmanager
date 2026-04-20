@@ -14,7 +14,7 @@
 package metrics
 
 import (
-	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -36,22 +36,16 @@ func (s stubMonitor) Presenter() string { return s.presenter }
 func resetForTest(t *testing.T) {
 	t.Helper()
 
-	registerMutex.Lock()
-	notAfterMetric = nil
-	notBeforeMetric = nil
-	registerMutex.Unlock()
+	notAfterMetric.Store(nil)
+	notBeforeMetric.Store(nil)
 
 	t.Cleanup(func() {
-		registerMutex.Lock()
-		notAfterMetric = nil
-		notBeforeMetric = nil
-		registerMutex.Unlock()
+		notAfterMetric.Store(nil)
+		notBeforeMetric.Store(nil)
 	})
 }
 
 func TestRegister(t *testing.T) {
-	ctx := context.Background()
-
 	tests := []struct {
 		name        string
 		monitor     Service
@@ -79,56 +73,110 @@ func TestRegister(t *testing.T) {
 			resetForTest(t)
 
 			registry := prometheus.NewRegistry()
-			err := register(ctx, test.monitor, registry)
-			require.NoError(t, err)
+			require.NoError(t, register(test.monitor, registry))
 
 			if test.wantMetrics {
-				require.NotNil(t, notAfterMetric)
-				require.NotNil(t, notBeforeMetric)
+				require.NotNil(t, notAfterMetric.Load())
+				require.NotNil(t, notBeforeMetric.Load())
 			} else {
-				require.Nil(t, notAfterMetric)
-				require.Nil(t, notBeforeMetric)
+				require.Nil(t, notAfterMetric.Load())
+				require.Nil(t, notBeforeMetric.Load())
 			}
 		})
 	}
 }
 
 func TestRegisterIdempotent(t *testing.T) {
-	ctx := context.Background()
 	resetForTest(t)
 
 	registry := prometheus.NewRegistry()
 	monitor := stubMonitor{presenter: "prometheus"}
 
-	require.NoError(t, register(ctx, monitor, registry))
-	firstNotAfter := notAfterMetric
-	firstNotBefore := notBeforeMetric
+	require.NoError(t, register(monitor, registry))
+	firstNotAfter := notAfterMetric.Load()
+	firstNotBefore := notBeforeMetric.Load()
 
-	require.NoError(t, register(ctx, monitor, registry))
-	require.Same(t, firstNotAfter, notAfterMetric, "second Register must not swap notAfterMetric")
-	require.Same(t, firstNotBefore, notBeforeMetric, "second Register must not swap notBeforeMetric")
+	require.NoError(t, register(monitor, registry))
+	require.Same(t, firstNotAfter, notAfterMetric.Load(), "second Register must not swap notAfterMetric")
+	require.Same(t, firstNotBefore, notBeforeMetric.Load(), "second Register must not swap notBeforeMetric")
 }
 
 func TestRegisterReusesExistingCollector(t *testing.T) {
-	ctx := context.Background()
 	resetForTest(t)
 
 	registry := prometheus.NewRegistry()
 	monitor := stubMonitor{presenter: "prometheus"}
 
-	// First call registers the gauges.
-	require.NoError(t, register(ctx, monitor, registry))
+	// First call registers the gauges against the shared registry.
+	require.NoError(t, register(monitor, registry))
+	firstNotAfter := notAfterMetric.Load()
+	firstNotBefore := notBeforeMetric.Load()
+	require.NotNil(t, firstNotAfter)
+	require.NotNil(t, firstNotBefore)
 
-	// Simulate another process having registered the same collector by dropping
-	// our package-level refs and re-running register against the same registry.
-	registerMutex.Lock()
-	notAfterMetric = nil
-	notBeforeMetric = nil
-	registerMutex.Unlock()
+	// Drop our package-level refs — simulates a fresh caller that has not yet
+	// observed registration but whose registry already contains the gauges.
+	notAfterMetric.Store(nil)
+	notBeforeMetric.Store(nil)
 
-	require.NoError(t, register(ctx, monitor, registry))
-	require.NotNil(t, notAfterMetric)
-	require.NotNil(t, notBeforeMetric)
+	require.NoError(t, register(monitor, registry))
+	require.Same(t, firstNotAfter, notAfterMetric.Load(),
+		"register must reuse the existing notAfter collector rather than creating a new one")
+	require.Same(t, firstNotBefore, notBeforeMetric.Load(),
+		"register must reuse the existing notBefore collector rather than creating a new one")
+}
+
+// failingRegisterer succeeds for the first N registrations, then returns an error
+// for all subsequent ones. Used to exercise the partial-failure cleanup path.
+type failingRegisterer struct {
+	mu           sync.Mutex
+	succeedUntil int
+	calls        int
+	registered   []prometheus.Collector
+}
+
+func (f *failingRegisterer) Register(c prometheus.Collector) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls++
+	if f.calls > f.succeedUntil {
+		return errors.New("mock registrar failure")
+	}
+	f.registered = append(f.registered, c)
+	return nil
+}
+
+func (f *failingRegisterer) Unregister(c prometheus.Collector) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i, r := range f.registered {
+		if r == c {
+			f.registered = append(f.registered[:i], f.registered[i+1:]...)
+			return true
+		}
+	}
+	return false
+}
+
+func (f *failingRegisterer) MustRegister(cs ...prometheus.Collector) {
+	for _, c := range cs {
+		if err := f.Register(c); err != nil {
+			panic(err)
+		}
+	}
+}
+
+func TestRegisterPartialFailureRollsBack(t *testing.T) {
+	resetForTest(t)
+
+	registrar := &failingRegisterer{succeedUntil: 1}
+
+	err := register(stubMonitor{presenter: "prometheus"}, registrar)
+	require.Error(t, err)
+
+	require.Nil(t, notAfterMetric.Load(), "package var must stay nil on partial failure")
+	require.Nil(t, notBeforeMetric.Load(), "package var must stay nil on partial failure")
+	require.Empty(t, registrar.registered, "first gauge must be unregistered when second fails")
 }
 
 func TestSetCertificateExpiryBeforeRegister(t *testing.T) {
@@ -136,71 +184,71 @@ func TestSetCertificateExpiryBeforeRegister(t *testing.T) {
 
 	// Must not panic when gauges are not yet registered.
 	require.NotPanics(t, func() {
-		SetCertificateExpiry("test", "server", time.Now(), time.Now())
+		SetCertificateExpiry("test", RoleServer, time.Now(), time.Now())
 	})
 }
 
 func TestSetCertificateExpiryAfterRegister(t *testing.T) {
-	ctx := context.Background()
 	resetForTest(t)
 
 	registry := prometheus.NewRegistry()
-	require.NoError(t, register(ctx, stubMonitor{presenter: "prometheus"}, registry))
+	require.NoError(t, register(stubMonitor{presenter: "prometheus"}, registry))
 
 	notAfter := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
 	notBefore := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
-	SetCertificateExpiry("dirk", "client", notAfter, notBefore)
+	SetCertificateExpiry("dirk", RoleClient, notAfter, notBefore)
 
 	require.InDelta(t,
 		float64(notAfter.Unix()),
-		testutil.ToFloat64(notAfterMetric.WithLabelValues("dirk", "client")),
+		testutil.ToFloat64(notAfterMetric.Load().WithLabelValues("dirk", RoleClient)),
 		0,
 	)
 	require.InDelta(t,
 		float64(notBefore.Unix()),
-		testutil.ToFloat64(notBeforeMetric.WithLabelValues("dirk", "client")),
+		testutil.ToFloat64(notBeforeMetric.Load().WithLabelValues("dirk", RoleClient)),
 		0,
 	)
 }
 
 func TestSetCertificateExpiryMultipleNames(t *testing.T) {
-	ctx := context.Background()
 	resetForTest(t)
 
 	registry := prometheus.NewRegistry()
-	require.NoError(t, register(ctx, stubMonitor{presenter: "prometheus"}, registry))
+	require.NoError(t, register(stubMonitor{presenter: "prometheus"}, registry))
 
 	dirkNotAfter := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
 	dirkNotBefore := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	tracingNotAfter := time.Date(2031, 6, 1, 0, 0, 0, 0, time.UTC)
 	tracingNotBefore := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
 
-	SetCertificateExpiry("dirk", "client", dirkNotAfter, dirkNotBefore)
-	SetCertificateExpiry("tracing", "client", tracingNotAfter, tracingNotBefore)
+	SetCertificateExpiry("dirk", RoleClient, dirkNotAfter, dirkNotBefore)
+	SetCertificateExpiry("tracing", RoleClient, tracingNotAfter, tracingNotBefore)
+
+	notAfter := notAfterMetric.Load()
+	notBefore := notBeforeMetric.Load()
 
 	require.InDelta(t,
 		float64(dirkNotAfter.Unix()),
-		testutil.ToFloat64(notAfterMetric.WithLabelValues("dirk", "client")),
+		testutil.ToFloat64(notAfter.WithLabelValues("dirk", RoleClient)),
 		0,
 	)
 	require.InDelta(t,
 		float64(tracingNotAfter.Unix()),
-		testutil.ToFloat64(notAfterMetric.WithLabelValues("tracing", "client")),
+		testutil.ToFloat64(notAfter.WithLabelValues("tracing", RoleClient)),
 		0,
 	)
 	require.InDelta(t,
 		float64(dirkNotBefore.Unix()),
-		testutil.ToFloat64(notBeforeMetric.WithLabelValues("dirk", "client")),
+		testutil.ToFloat64(notBefore.WithLabelValues("dirk", RoleClient)),
 		0,
 	)
 	require.InDelta(t,
 		float64(tracingNotBefore.Unix()),
-		testutil.ToFloat64(notBeforeMetric.WithLabelValues("tracing", "client")),
+		testutil.ToFloat64(notBefore.WithLabelValues("tracing", RoleClient)),
 		0,
 	)
 
-	// Sanity-check the registry exposes both series.
 	families, err := registry.Gather()
 	require.NoError(t, err)
 	require.NotEmpty(t, families)
@@ -222,7 +270,6 @@ func TestSetCertificateExpiryMultipleNames(t *testing.T) {
 }
 
 func TestConcurrentRegister(t *testing.T) {
-	ctx := context.Background()
 	resetForTest(t)
 
 	registry := prometheus.NewRegistry()
@@ -233,11 +280,11 @@ func TestConcurrentRegister(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			require.NoError(t, register(ctx, monitor, registry))
+			require.NoError(t, register(monitor, registry))
 		}()
 	}
 	wg.Wait()
 
-	require.NotNil(t, notAfterMetric)
-	require.NotNil(t, notBeforeMetric)
+	require.NotNil(t, notAfterMetric.Load())
+	require.NotNil(t, notBeforeMetric.Load())
 }

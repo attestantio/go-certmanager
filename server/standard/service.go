@@ -60,7 +60,7 @@ func New(ctx context.Context, params ...Parameter) (*Service, error) {
 		log = log.Level(parameters.logLevel)
 	}
 
-	if err := metrics.Register(ctx, parameters.monitor); err != nil {
+	if err := metrics.Register(parameters.monitor); err != nil {
 		return nil, fmt.Errorf("failed to register metrics: %w", err)
 	}
 
@@ -197,7 +197,7 @@ func (s *Service) loadCertificate(ctx context.Context) error {
 	s.currentCert.Store(&serverCert)
 
 	if s.name != "" {
-		metrics.SetCertificateExpiry(s.name, "server", serverCert.Leaf.NotAfter, serverCert.Leaf.NotBefore)
+		metrics.SetCertificateExpiry(s.name, metrics.RoleServer, serverCert.Leaf.NotAfter, serverCert.Leaf.NotBefore)
 	}
 
 	s.log.Info().

@@ -82,6 +82,11 @@ func WithCertPEMURI(certPEMURI string) Parameter {
 // WithName sets the certificate name used as the metric "name" label.
 // The value is stable across certificate rotations and distinguishes multiple
 // managers within a single process (e.g. "dirk", "tracing", "api").
+//
+// WARNING: the "name" label is a Prometheus label. Use a low-cardinality,
+// stable identifier — never a dynamic or per-request value, or the metric
+// will grow an unbounded set of time series.
+//
 // Required when WithMonitor is set.
 func WithName(name string) Parameter {
 	return parameterFunc(func(p *parameters) {

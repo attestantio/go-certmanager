@@ -14,30 +14,39 @@
 package metrics
 
 import (
-	"context"
 	"errors"
+	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+// Role values applied to the "role" label on certificate metrics.
+const (
+	RoleServer = "server"
+	RoleClient = "client"
+)
+
 var (
 	registerMutex sync.Mutex
 
-	notAfterMetric  *prometheus.GaugeVec
-	notBeforeMetric *prometheus.GaugeVec
+	notAfterMetric  atomic.Pointer[prometheus.GaugeVec]
+	notBeforeMetric atomic.Pointer[prometheus.GaugeVec]
 )
 
 // Register installs the Prometheus gauges exposing certificate expiry data.
 // The call is idempotent and is a no-op when monitor is nil or when the monitor
-// presenter is not "prometheus".
-func Register(ctx context.Context, monitor Service) error {
-	return register(ctx, monitor, prometheus.DefaultRegisterer)
+// presenter is not "prometheus". If registration of the second gauge fails after
+// the first has been registered, the first is unregistered before the error is
+// returned so the Prometheus registry is not left in a partial state.
+func Register(monitor Service) error {
+	return register(monitor, prometheus.DefaultRegisterer)
 }
 
 // register is the test-friendly implementation that accepts an explicit registerer.
-func register(_ context.Context, monitor Service, registerer prometheus.Registerer) error {
+func register(monitor Service, registerer prometheus.Registerer) error {
 	if monitor == nil {
 		return nil
 	}
@@ -48,59 +57,77 @@ func register(_ context.Context, monitor Service, registerer prometheus.Register
 	registerMutex.Lock()
 	defer registerMutex.Unlock()
 
-	// Package-level gauges are always assigned together, so a non-nil notAfterMetric
-	// is sufficient evidence that registration already completed.
-	if notAfterMetric != nil {
+	// notAfterMetric and notBeforeMetric are assigned together, so a non-nil
+	// notAfterMetric is sufficient evidence that registration already completed.
+	if notAfterMetric.Load() != nil {
 		return nil
 	}
 
-	notAfter := prometheus.NewGaugeVec(prometheus.GaugeOpts{
+	notAfter, notAfterOwned, err := registerOrReuseGauge(registerer, prometheus.GaugeOpts{
 		Namespace: "certmanager",
 		Subsystem: "certificate",
 		Name:      "not_after_seconds",
 		Help:      "The unix timestamp at which the certificate expires.",
-	}, []string{"name", "role"})
-	if err := registerer.Register(notAfter); err != nil {
-		var are prometheus.AlreadyRegisteredError
-		if !errors.As(err, &are) {
-			return err
-		}
-		if existing, ok := are.ExistingCollector.(*prometheus.GaugeVec); ok {
-			notAfter = existing
-		}
+	})
+	if err != nil {
+		return err
 	}
 
-	notBefore := prometheus.NewGaugeVec(prometheus.GaugeOpts{
+	notBefore, _, err := registerOrReuseGauge(registerer, prometheus.GaugeOpts{
 		Namespace: "certmanager",
 		Subsystem: "certificate",
 		Name:      "not_before_seconds",
 		Help:      "The unix timestamp at which the certificate becomes valid.",
-	}, []string{"name", "role"})
-	if err := registerer.Register(notBefore); err != nil {
-		var are prometheus.AlreadyRegisteredError
-		if !errors.As(err, &are) {
-			return err
+	})
+	if err != nil {
+		// Roll back the first gauge if we actually registered it, so the Prometheus
+		// registry is not left with a half-registered set of certmanager gauges.
+		if notAfterOwned {
+			registerer.Unregister(notAfter)
 		}
-		if existing, ok := are.ExistingCollector.(*prometheus.GaugeVec); ok {
-			notBefore = existing
-		}
+		return err
 	}
 
-	notAfterMetric = notAfter
-	notBeforeMetric = notBefore
+	notAfterMetric.Store(notAfter)
+	notBeforeMetric.Store(notBefore)
 
 	return nil
 }
 
+// registerOrReuseGauge registers a new gauge or reuses the one already present
+// in the registerer under the same metric identity. The boolean return indicates
+// whether this call produced the registration (true) or reused an existing
+// collector (false); the caller uses it to decide rollback on subsequent errors.
+func registerOrReuseGauge(
+	registerer prometheus.Registerer,
+	opts prometheus.GaugeOpts,
+) (*prometheus.GaugeVec, bool, error) {
+	gauge := prometheus.NewGaugeVec(opts, []string{"name", "role"})
+	if err := registerer.Register(gauge); err != nil {
+		var alreadyRegistered prometheus.AlreadyRegisteredError
+		if !errors.As(err, &alreadyRegistered) {
+			return nil, false, err
+		}
+		existing, ok := alreadyRegistered.ExistingCollector.(*prometheus.GaugeVec)
+		if !ok {
+			return nil, false, fmt.Errorf("unexpected collector type for gauge %q", opts.Name)
+		}
+
+		return existing, false, nil
+	}
+
+	return gauge, true, nil
+}
+
 // SetCertificateExpiry records the expiry timestamps for the named certificate.
 // Calls made before Register (or when the monitor is non-Prometheus) are no-ops.
+// The read path is lock-free; only Register serializes via the register mutex.
 func SetCertificateExpiry(name, role string, notAfter, notBefore time.Time) {
-	registerMutex.Lock()
-	defer registerMutex.Unlock()
-
-	if notAfterMetric == nil || notBeforeMetric == nil {
+	na := notAfterMetric.Load()
+	nb := notBeforeMetric.Load()
+	if na == nil || nb == nil {
 		return
 	}
-	notAfterMetric.WithLabelValues(name, role).Set(float64(notAfter.Unix()))
-	notBeforeMetric.WithLabelValues(name, role).Set(float64(notBefore.Unix()))
+	na.WithLabelValues(name, role).Set(float64(notAfter.Unix()))
+	nb.WithLabelValues(name, role).Set(float64(notBefore.Unix()))
 }
