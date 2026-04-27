@@ -3,7 +3,7 @@ module github.com/attestantio/go-certmanager
 go 1.25.5
 
 require (
-	github.com/rs/zerolog v1.35.0
+	github.com/rs/zerolog v1.35.1
 	github.com/stretchr/testify v1.11.1
 	github.com/wealdtech/go-majordomo v1.1.2
 	google.golang.org/grpc v1.80.0
