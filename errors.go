@@ -42,4 +42,7 @@ var (
 
 	// ErrReloadInProgress is returned when a certificate reload is already in progress.
 	ErrReloadInProgress = errors.New("certificate reload already in progress")
+
+	// ErrNoNameWithMonitor is returned when a monitor is configured without a certificate name.
+	ErrNoNameWithMonitor = errors.New("no name specified with monitor")
 )

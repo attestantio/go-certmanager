@@ -22,6 +22,7 @@ import (
 
 	certmanager "github.com/attestantio/go-certmanager"
 	"github.com/attestantio/go-certmanager/client"
+	"github.com/attestantio/go-certmanager/metrics"
 	"github.com/attestantio/go-certmanager/san"
 	"github.com/rs/zerolog"
 	zerologger "github.com/rs/zerolog/log"
@@ -48,6 +49,10 @@ func New(ctx context.Context, params ...Parameter) (*Service, error) {
 		log = log.Level(parameters.logLevel)
 	}
 
+	if err := metrics.Register(parameters.monitor); err != nil {
+		return nil, fmt.Errorf("failed to register metrics: %w", err)
+	}
+
 	if parameters.loadTimeout > 0 {
 		var cancel context.CancelFunc
 		// Give up on the load if it takes longer than the load timeout.
@@ -72,12 +77,16 @@ func New(ctx context.Context, params ...Parameter) (*Service, error) {
 	if len(clientPair.Certificate) == 0 {
 		return nil, certmanager.ErrEmptyCertificate
 	}
-	cert, err := x509.ParseCertificate(clientPair.Certificate[0])
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse client certificate: %w", err)
+	// Backfill Leaf when GODEBUG=x509keypairleaf=0 disables the Go 1.23+ auto-population.
+	if clientPair.Leaf == nil {
+		parsedCert, err := x509.ParseCertificate(clientPair.Certificate[0])
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse client certificate: %w", err)
+		}
+		clientPair.Leaf = parsedCert
 	}
-	if cert.NotAfter.Before(time.Now()) {
-		log.Error().Time("expiry", cert.NotAfter).Msg("Client certificate expired")
+	if clientPair.Leaf.NotAfter.Before(time.Now()) {
+		log.Error().Time("expiry", clientPair.Leaf.NotAfter).Msg("Client certificate expired")
 		return nil, certmanager.ErrExpiredCertificate
 	}
 
@@ -95,10 +104,14 @@ func New(ctx context.Context, params ...Parameter) (*Service, error) {
 	}
 
 	log.Info().
-		Str("identity", san.IdentityString(cert)).
-		Str("issued_by", cert.Issuer.CommonName).
-		Time("valid_until", cert.NotAfter).
+		Str("identity", san.IdentityString(clientPair.Leaf)).
+		Str("issued_by", clientPair.Leaf.Issuer.CommonName).
+		Time("valid_until", clientPair.Leaf.NotAfter).
 		Msg("Client certificate loaded")
+
+	if parameters.name != "" {
+		metrics.SetCertificateExpiry(parameters.name, metrics.RoleClient, clientPair.Leaf.NotAfter, clientPair.Leaf.NotBefore)
+	}
 
 	return &Service{
 		log:      log,

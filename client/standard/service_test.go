@@ -23,12 +23,20 @@ import (
 
 	certmanager "github.com/attestantio/go-certmanager"
 	"github.com/attestantio/go-certmanager/client/standard"
+	"github.com/attestantio/go-certmanager/metrics"
 	certtesting "github.com/attestantio/go-certmanager/testing"
 	"github.com/attestantio/go-certmanager/testing/mock"
 	"github.com/stretchr/testify/require"
 	fileconfidant "github.com/wealdtech/go-majordomo/confidants/file"
 	majordomostandard "github.com/wealdtech/go-majordomo/standard"
 )
+
+// stubMonitor is a test monitor returning the configured presenter string.
+type stubMonitor struct{ presenter string }
+
+func (s stubMonitor) Presenter() string { return s.presenter }
+
+var _ metrics.Service = stubMonitor{}
 
 // newMajordomo creates a majordomo service with file confidant registered.
 func newMajordomo(t *testing.T) *majordomostandard.Service {
@@ -430,6 +438,19 @@ func TestNewSentinelErrors(t *testing.T) {
 			},
 			sentinel: certmanager.ErrExpiredCertificate,
 		},
+		{
+			name: "MonitorWithoutName",
+			params: []standard.Parameter{
+				standard.WithMajordomo(mock.NewMajordomo(map[string][]byte{
+					"cert.pem": []byte(certtesting.ClientTest01Crt),
+					"cert.key": []byte(certtesting.ClientTest01Key),
+				})),
+				standard.WithCertPEMURI("cert.pem"),
+				standard.WithCertKeyURI("cert.key"),
+				standard.WithMonitor(stubMonitor{presenter: "prometheus"}),
+			},
+			sentinel: certmanager.ErrNoNameWithMonitor,
+		},
 	}
 
 	for _, test := range tests {
@@ -439,6 +460,25 @@ func TestNewSentinelErrors(t *testing.T) {
 			require.ErrorIs(t, err, test.sentinel)
 		})
 	}
+}
+
+func TestNewWithMonitor(t *testing.T) {
+	ctx := context.Background()
+
+	majordomoSvc := mock.NewMajordomo(map[string][]byte{
+		"cert.pem": []byte(certtesting.ClientTest01Crt),
+		"cert.key": []byte(certtesting.ClientTest01Key),
+	})
+
+	svc, err := standard.New(ctx,
+		standard.WithMajordomo(majordomoSvc),
+		standard.WithCertPEMURI("cert.pem"),
+		standard.WithCertKeyURI("cert.key"),
+		standard.WithName("test-client"),
+		standard.WithMonitor(stubMonitor{presenter: "prometheus"}),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, svc)
 }
 
 func TestMultipleGetTLSConfigCalls(t *testing.T) {
